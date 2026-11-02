@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-kbZJkxvcjwMDwHcz1lNuGjId6WYBFHty5WjScmj+x+E='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-fUyJ4jKHGKrMdY4zSePxbH1vP4VmcCm6b01Zi0uNnW4='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -674,10 +674,22 @@ const TEST_SMS_CODE = "000000";
 const VERIFY_DELAY_MS = 2200;
 const VERIFY_STEPS = ["konto", "code", "art", "person", "ausweis", "selfie", "bank", "pruefen"];
 const STEP_TITLES = { konto: "Konto", code: "Bestätigen", art: "Art", person: "Angaben", ausweis: "Ausweis", selfie: "Selfie", bank: "Bank", pruefen: "Prüfen" };
+const SAMPLE_FIELDS = { front: "front", back: "back", selfie: "selfie", address: "addressProof" };
+const SELLER_KINDS = ["einzel", "firma"];
+const DOC_TYPES = ["Personalausweis", "Reisepass", "Führerschein"];
+const DEMO_DATA_HINT = `<p class="note" style="margin:10px 0 4px">Vorschau: bitte keine echten Daten eingeben. Nichts wird gespeichert oder gesendet.</p>`;
 let verification = null;
 
+// Nur die Verifizierung des gerade angemeldeten Mitglieds gilt, sonst ließe sie sich auf ein anderes umlenken.
+function activeVerification() {
+  if (verification && verification.memberId !== state.currentMemberId) verification = null;
+  return verification;
+}
+
 function startVerification() {
-  verification = { step: "konto", kind: "einzel", docType: "Personalausweis", front: false, back: false, selfie: false, addressProof: false, needsAddressProof: false, phase: "form" };
+  const member = currentMember();
+  if (!member.setupPaid) { toast("Bitte zuerst die Einrichtungsgebühr bezahlen"); return; }
+  verification = { memberId: member.id, step: "konto", kind: "einzel", docType: "Personalausweis", front: false, back: false, selfie: false, addressProof: false, needsAddressProof: false, phase: "form" };
   location.hash = "#/verifizierung";
 }
 
@@ -704,7 +716,7 @@ function verificationBody(member) {
       ${[["einzel", "Als Privatperson oder Einzelunternehmer", "Freiberufler, Coaches, Kleingewerbe"], ["firma", "Über meine Firma", "GmbH, UG, LLC, OÜ …"]].map(([key, title, sub]) =>
         `<button type="button" class="choice${v.kind === key ? " on" : ""}" data-action="kind" data-id="${key}"><b>${title}</b><span>${sub}</span></button>`).join("")}`,
     person: () => `<h2>Angaben zu deiner Person</h2>
-      <p class="vmuted">So, wie es in deinem Ausweis steht.</p>
+      <p class="vmuted">So, wie es in deinem Ausweis steht.</p>${DEMO_DATA_HINT}
       <div class="split"><div><label for="v-first">Vorname</label><input id="v-first" value="${escapeHtml(member.name.split(" ")[0])}"></div><div><label for="v-last">Nachname</label><input id="v-last" value="${escapeHtml(member.name.split(" ").slice(1).join(" "))}"></div></div>
       <label for="v-birth">Geburtsdatum</label><input id="v-birth" value="14.05.1986">
       <label for="v-country">Land deines Wohnsitzes</label><select id="v-country"><option>Deutschland</option><option>Österreich</option><option>Schweiz</option><option>Spanien</option><option>Portugal</option></select>
@@ -714,7 +726,7 @@ function verificationBody(member) {
       <p class="note" style="margin-top:14px">Tipp für die Vorführung: Schreib „Postfach“ in die Straße, dann siehst du, was bei einer Adresse ohne Wohnsitz passiert.</p>`,
     ausweis: () => `<h2>Ausweis bestätigen</h2>
       <p class="vmuted">Stripe prüft deinen Ausweis. Family Travel Business bekommt ihn nicht zu sehen.</p>
-      <div class="segmented">${["Personalausweis", "Reisepass", "Führerschein"].map(t => `<button type="button" class="${v.docType === t ? "on" : ""}" data-action="doctype" data-id="${t}">${t}</button>`).join("")}</div>
+      <div class="segmented">${DOC_TYPES.map(t => `<button type="button" class="${v.docType === t ? "on" : ""}" data-action="doctype" data-id="${t}">${t}</button>`).join("")}</div>
       ${sampleTile("front", "Vorderseite fotografieren", v.front)}
       ${v.docType === "Reisepass" ? "" : sampleTile("back", "Rückseite fotografieren", v.back)}
       <p class="vmuted small" style="margin-top:12px">In der Vorschau werden keine echten Fotos verwendet.</p>`,
@@ -722,7 +734,7 @@ function verificationBody(member) {
       <p class="vmuted">Damit Stripe sieht, dass du die Person auf dem Ausweis bist.</p>
       <div class="selfie${v.selfie ? " done" : ""}"><div class="oval">${v.selfie ? checkIcon : ""}</div></div>
       ${v.selfie ? "" : `<button type="button" class="btn ghost wide" data-action="sample" data-id="selfie" style="margin-top:12px">Vorschau: Beispiel-Selfie verwenden</button>`}`,
-    bank: () => `<h2>Wohin sollen wir auszahlen?</h2>
+    bank: () => `<h2>Wohin sollen wir auszahlen?</h2>${DEMO_DATA_HINT}
       <label for="v-iban">IBAN</label><input id="v-iban" value="DE89 3704 0044 0532 0130 00">
       <label for="v-holder">Kontoinhaber</label><input id="v-holder" value="${escapeHtml(member.name)}">
       <p class="vmuted small">Das Konto muss auf dich oder deine Firma laufen.</p>`,
@@ -741,10 +753,10 @@ function verificationBody(member) {
 }
 
 function pageVerification() {
-  const member = currentMember();
-  const v = verification;
+  const v = activeVerification();
   if (!v) return `<div class="panel empty" style="margin-top:40px">Starte die Freischaltung in <a href="#/bereich" style="color:var(--blue)">deinem Bereich</a>.</div>`;
-  const shell = inner => `<div class="vshell"><div class="vhead"><span>Family Travel Business <span class="vsep">×</span> Stripe</span><a href="#/bereich" class="vclose">Abbrechen</a></div>${inner}
+  const member = memberById(v.memberId);
+  const shell = inner => `<div class="vshell"><div class="vhead"><span>Family Travel Business <span class="vsep">×</span> Stripe <span class="vsep">(Nachbau)</span></span><a href="#/bereich" class="vclose">Abbrechen</a></div>${inner}
     <div class="vfoot">Vorschau mit Testdaten · später übernimmt Stripe diese Seite</div></div>`;
   if (v.phase === "checking") return shell(`<div class="vcard center"><div class="bigspin"></div><h2>Stripe prüft deine Angaben …</h2><p class="vmuted">Das dauert meist nur ein paar Sekunden, manchmal bis zu einem Werktag.</p></div>`);
   if (v.phase === "address") return shell(`<div class="vcard"><span class="badge amber">Weitere Angabe nötig</span>
@@ -790,13 +802,15 @@ function submitVerificationStep(form) {
 }
 
 function runVerificationCheck() {
-  const v = verification;
+  const v = activeVerification();
+  if (!v) return;
   v.phase = "checking";
   render();
   setTimeout(() => {
-    if (verification !== v || location.hash !== "#/verifizierung") return;
+    if (activeVerification() !== v || location.hash !== "#/verifizierung") { v.phase = "form"; return; }
     if (v.needsAddressProof && !v.addressProof) { v.phase = "address"; render(); return; }
-    const member = currentMember();
+    const member = memberById(v.memberId);
+    if (!member?.setupPaid) { verification = null; render(); return; }
     member.payouts = true;
     saveState();
     v.phase = "done";
@@ -899,11 +913,11 @@ const ACTIONS = {
   "edit-offer": id => openOfferDialog(id),
   "delete-offer": id => confirmDelete(id),
   "onboard": () => startVerification(),
-  "sample": key => { if (verification) { verification[key === "address" ? "addressProof" : key] = true; render(); } },
-  "kind": kind => { if (verification) { verification.kind = kind; render(); } },
-  "doctype": type => { if (verification) { Object.assign(verification, { docType: type, front: false, back: false }); render(); } },
-  "verify-back": () => { const i = VERIFY_STEPS.indexOf(verification.step); if (i > 0) { verification.step = VERIFY_STEPS[i - 1]; render(); } },
-  "verify-next": () => runVerificationCheck(),
+  "sample": key => { const v = activeVerification(); if (v && Object.hasOwn(SAMPLE_FIELDS, key)) { v[SAMPLE_FIELDS[key]] = true; render(); } },
+  "kind": kind => { const v = activeVerification(); if (v && SELLER_KINDS.includes(kind)) { v.kind = kind; render(); } },
+  "doctype": type => { const v = activeVerification(); if (v && DOC_TYPES.includes(type)) { Object.assign(v, { docType: type, front: false, back: false }); render(); } },
+  "verify-back": () => { const v = activeVerification(); const i = v ? VERIFY_STEPS.indexOf(v.step) : -1; if (i > 0) { v.step = VERIFY_STEPS[i - 1]; render(); } },
+  "verify-next": () => { const v = activeVerification(); if (v?.phase === "address" && v.addressProof) runVerificationCheck(); },
   "pay-setup": () => paySetupFee(),
   "export": () => exportCsv(),
   "view-as": id => { state.currentMemberId = id; saveState(); location.hash = "#/bereich/verkaeufe"; },
@@ -930,7 +944,7 @@ document.getElementById("app").addEventListener("submit", e => {
   if (e.target.id === "checkout") handleCheckout(e.target, offerById(id));
   if (e.target.id === "profile-form") saveProfile(e.target);
   if (e.target.id === "settings-form") saveSettings(e.target);
-  if (e.target.id === "verify-form") submitVerificationStep(e.target);
+  if (e.target.id === "verify-form" && activeVerification()) submitVerificationStep(e.target);
 });
 
 document.getElementById("reset").addEventListener("click", () => {
