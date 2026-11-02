@@ -28,7 +28,7 @@ Ziel: Dirk Adams zeigen, wie das Vermittlermodell mit Stripe Connect (Direct Cha
 | URL-Hash | Routen per `Object.hasOwn`, unbekannte IDs → „Seite gibt es nicht“ |
 | `data-id` in Aktionen | Allowlists (`SAMPLE_FIELDS`, `SELLER_KINDS`, `DOC_TYPES`), Verifizierung an `memberId` gebunden |
 | Kartennummer | nur die zwei Testkarten werden angenommen |
-| Termin-ID in der URL / Termindaten | `isDateBookable` vor Kasse, beim Absenden und nach der Zahlung; Datum ab morgen, Uhrzeit-Muster, Plätze 1–500, keine Dubletten; nur eigene Angebote änderbar |
+| Termin-ID in der URL / Termindaten | `isDateBookable` vor Kasse, beim Absenden und nach der Zahlung (mit frisch geladenem Stand, zweiter Tab); echtes Kalenderdatum ab morgen, Uhrzeit-Muster, Plätze 1–500 bzw. 1 bei 1:1, eindeutige IDs, keine Dubletten; Wechsel 1:1↔Gruppe nur ohne Termine; nur eigene Angebote änderbar |
 
 **Worst Case:** Ein Besucher gibt echte Daten ein. Abgemildert: keine Speicherung der Verifizierungsdaten, kein Netzwerkzugriff (CSP `default-src 'none'`, `form-action 'none'`), kein Datei-Upload, Hinweise „keine echten Daten“ bei Person, Bank, Kasse, Testmodus-Banner.
 

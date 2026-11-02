@@ -14,7 +14,7 @@ function runPage(storedValue) {
   const timers = [];
   const context = {
     console: { warn() {}, log() {} },
-    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
+    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     document: { getElementById: id => (id === "app" ? app : element()), querySelectorAll: () => [], createElement: element, body: { appendChild() {} } },
     location: { hash: "#/" },
     window: { addEventListener() {}, scrollTo() {} },
@@ -22,7 +22,7 @@ function runPage(storedValue) {
   };
   vm.createContext(context);
   vm.runInContext(script + "\n;globalThis.__state = state; globalThis.__isValidState = isValidState; globalThis.__seed = seedData;"
-    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, createMember, deleteMember, saveOffer, addOfferDate, removeOfferDate, isDateBookable, bookableDates, freeSeats, pageCheckout, handleCheckout, offerById: id => state.offers.find(o => o.id === id), todayIso, dayFromToday, passwordError, confirmEmail, pageInbox, pagePassword, isValidState, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
+    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, createMember, deleteMember, splitPayment, isRealDate, saveOffer, addOfferDate, removeOfferDate, isDateBookable, bookableDates, freeSeats, pageCheckout, handleCheckout, offerById: id => state.offers.find(o => o.id === id), todayIso, dayFromToday, passwordError, confirmEmail, pageInbox, pagePassword, isValidState, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
   const flushTimers = () => { while (timers.length) timers.shift()(); };
   return { context, app, api: context.__api, flushTimers };
 }
@@ -309,14 +309,17 @@ Object.assign(tests, {
     assert.ok(second.fields["#err"].textContent.includes("nicht mehr frei"));
   },
   "Termine: Termin während der Zahlung vergeben wird nicht doppelt gebucht"() {
-    const { api, flushTimers } = runPage();
+    const { api, context, flushTimers } = runPage();
     const offer = api.offerById("o1");
     const a = checkoutForm();
     api.handleCheckout(a, offer, "d12");
-    api.state.orders.push({ id: "bfremd1", offerId: "o1", dateId: "d12", buyer: "Andere", email: "x@example.com", grossCents: 12000, commissionPercent: 15, date: "2026-11-02" });
+    const otherTab = JSON.parse(JSON.stringify(api.state));
+    otherTab.orders.push({ id: "bfremd1", offerId: "o1", dateId: "d12", buyer: "Andere", email: "x@example.com", grossCents: 12000, commissionPercent: 15, date: "2026-11-02" });
+    context.localStorage.setItem("ftb-vorschau-v2", JSON.stringify(otherTab));
     flushTimers();
     assert.equal(api.state.orders.filter(o => o.dateId === "d12").length, 1);
     assert.ok(a.fields["#err"].textContent.includes("vergeben"));
+    assert.ok(api.state.orders.some(o => o.id === "bfremd1"), "Buchung aus dem anderen Tab bleibt erhalten");
   },
   "Termine: Kasse ohne gültigen Termin zeigt Hinweis statt Kasse"() {
     const { api } = runPage();
@@ -367,6 +370,79 @@ Object.assign(tests, {
     const { api } = runPage();
     api.state.orders[0].dateId = "dgibtsnicht";
     assert.equal(api.isValidState(api.state), false);
+  }
+});
+
+const XSS = "<img src=x onerror=alert(1)>";
+
+Object.assign(tests, {
+  "Termine: Workshop mit Terminen lässt sich nicht auf 1:1 umstellen"() {
+    const { api } = runPage();
+    api.state.currentMemberId = "m1";
+    const result = api.saveOffer("o2", { title: "Workshop", type: "Coaching 1:1", price: "89", duration: "180", location: "Freiburg", desc: "" });
+    assert.ok(result.error);
+    assert.equal(api.offerById("o2").type, "Workshop");
+    const empty = api.saveOffer(null, { title: "Neu", type: "Workshop", price: "50", duration: "60", location: "Online", desc: "" }).offer;
+    assert.equal(api.saveOffer(empty.id, { title: "Neu", type: "Coaching 1:1", price: "50", duration: "60", location: "Online", desc: "" }).error, undefined, "ohne Termine erlaubt");
+  },
+  "Speicher: 1:1-Termin mit mehreren Plätzen wird verworfen"() {
+    const { api } = runPage();
+    api.offerById("o1").dates[0].seats = 50;
+    assert.equal(api.isValidState(api.state), false);
+  },
+  "Speicher: Uhrzeit mit HTML, ungültiges Datum und doppelte IDs werden verworfen"() {
+    const cases = [
+      s => { s.offers[0].dates[0].time = "<svg onload=alert(1)>"; },
+      s => { s.offers[0].dates[0].date = "2099-02-31"; },
+      s => { s.offers[0].dates[1].id = s.offers[0].dates[0].id; },
+      s => { s.orders[1].id = s.orders[0].id; }
+    ];
+    for (const mutate of cases) {
+      const { api } = runPage();
+      mutate(api.state);
+      assert.equal(api.isValidState(api.state), false, String(mutate));
+    }
+  },
+  "Termine: ungültige Kalenderdaten werden abgelehnt"() {
+    const { api } = runPage();
+    api.state.currentMemberId = "m1";
+    assert.equal(api.isRealDate("2099-02-31"), false);
+    assert.equal(api.isRealDate("2099-99-99"), false);
+    assert.ok(api.addOfferDate("o1", { date: "2099-02-31", time: "10:00", seats: "1" }).error);
+  },
+  "Termine: Termin heute ist nicht mehr buchbar"() {
+    const { api } = runPage();
+    const offer = api.offerById("o1");
+    offer.dates.push({ id: "dheute", date: api.todayIso(), time: "23:00", seats: 1 });
+    assert.equal(api.isDateBookable(offer, "dheute"), false);
+  },
+  "Termine: archiviertes Angebot ist nicht buchbar"() {
+    const { api } = runPage();
+    const offer = api.offerById("o1");
+    offer.archived = true;
+    assert.equal(api.isDateBookable(offer, "d11"), false);
+    assert.ok(!api.pageCheckout("o1", "d11").includes('id="checkout"'));
+  },
+  "Beträge: Aufteilung mit festen Werten"() {
+    const { api } = runPage();
+    const split = api.splitPayment(49900, 15);
+    assert.equal(split.commissionCents, 7485);
+    assert.equal(split.stripeFeeCents, 774);
+    assert.equal(split.payoutCents, 41641);
+    assert.equal(split.commissionCents + split.stripeFeeCents + split.payoutCents, 49900);
+  },
+  "Escaping: Titel und Ort mit HTML auf allen Seiten"() {
+    const { context } = runPage();
+    const tricky = context.__seed();
+    Object.assign(tricky.offers[0], { title: XSS, location: XSS, desc: XSS });
+    tricky.orders.push({ id: "bxss1", offerId: "o1", dateId: "d11", buyer: XSS, email: "x@example.com", grossCents: 12000, commissionPercent: 15, date: "2026-11-02" });
+    const page = runPage(JSON.stringify(tricky));
+    assert.equal(page.api.state.offers[0].title, XSS, "Stand wurde geladen");
+    for (const hash of ["#/", "#/angebot/o1", "#/kasse/o1/d12", "#/fertig/bxss1", "#/bereich/verkaeufe", "#/bereich/angebote", "#/admin"]) {
+      page.context.location.hash = hash;
+      page.api.render();
+      assert.ok(!page.app.innerHTML.includes("<img"), hash);
+    }
   }
 });
 

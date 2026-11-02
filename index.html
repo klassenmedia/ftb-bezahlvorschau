@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-YpoCn9p0tgTCuhKOf8X/jn/etoS60CUvTycg13K8+uE='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-4TGyCyo0fcbl9fKdcrRlZn2Gk700GNP+bM0FPeYYfMc='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -230,6 +230,7 @@ function dayFromToday(days) {
 }
 
 const todayIso = () => isoDate(new Date());
+const isRealDate = value => typeof value === "string" && DATE_PATTERN.test(value) && isoDate(new Date(value + "T12:00:00")) === value;
 
 function seedData() {
   const slot = (id, days, time, seats = 1) => ({ id, date: dayFromToday(days), time, seats });
@@ -311,24 +312,30 @@ function isValidState(data) {
   const memberIds = new Set(members.map(m => m && m.id));
   const offerIds = new Set(offers.map(o => o && o.id));
   const dateIdsByOffer = new Map(offers.map(o => [o && o.id, new Set(Array.isArray(o?.dates) ? o.dates.map(d => d && d.id) : [])]));
-  const isValidDate = d => d && isSafeId(d.id) && DATE_PATTERN.test(d.date) && TIME_PATTERN.test(d.time) && Number.isInteger(d.seats) && d.seats >= 1 && d.seats <= MAX_SEATS;
+  const isValidDate = (d, offer) => d && isSafeId(d.id) && isRealDate(d.date) && TIME_PATTERN.test(d.time) && Number.isInteger(d.seats) && d.seats >= 1
+    && d.seats <= (offer.type === SINGLE_SEAT_TYPE ? 1 : MAX_SEATS);
+  const unique = list => new Set(list).size === list.length;
+  if (!unique(members.map(m => m && m.id)) || !unique(offers.map(o => o && o.id)) || !unique(orders.map(o => o && o.id))) return false;
   return members.every(m => m && isSafeId(m.id) && [m.name, m.topic, m.category, m.city, m.bio, m.status].every(isText)
       && Number.isInteger(m.color) && m.color >= 0 && typeof m.payouts === "boolean" && typeof m.setupPaid === "boolean"
       && (m.email === undefined || (typeof m.email === "string" && m.email.length <= 120))
       && (m.emailConfirmed === undefined || typeof m.emailConfirmed === "boolean"))
     && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.desc, o.location].every(isText) && OFFER_TYPES.includes(o.type)
       && isPrice(o.priceCents) && Number.isInteger(o.durationMin) && o.durationMin >= 15 && o.durationMin <= 1440
-      && Array.isArray(o.dates) && o.dates.every(isValidDate)
+      && Array.isArray(o.dates) && o.dates.every(d => isValidDate(d, o)) && unique(o.dates.map(d => d && d.id))
       && (o.archived === undefined || typeof o.archived === "boolean"))
     && orders.every(o => o && isSafeId(o.id) && offerIds.has(o.offerId) && dateIdsByOffer.get(o.offerId).has(o.dateId) && isText(o.buyer) && isCents(o.grossCents)
-      && isPercent(o.commissionPercent) && /^\d{4}-\d{2}-\d{2}$/.test(o.date))
-    && setupFees.every(f => f && memberIds.has(f.memberId) && isCents(f.cents) && /^\d{4}-\d{2}-\d{2}$/.test(f.date))
+      && isPercent(o.commissionPercent) && isRealDate(o.date))
+    && setupFees.every(f => f && memberIds.has(f.memberId) && isCents(f.cents) && isRealDate(f.date))
     && memberIds.has(data.currentMemberId);
 }
+
+const OLD_STORAGE_NAMES = ["ftb-vorschau-v1"];
 
 function loadState() {
   let raw = null;
   try {
+    OLD_STORAGE_NAMES.forEach(name => localStorage.removeItem(name));
     raw = localStorage.getItem(STORAGE_NAME);
   } catch (error) {
     console.warn("Browser-Speicher nicht verfügbar, starte mit Testdaten.", error);
@@ -907,6 +914,8 @@ function saveOffer(offerId, fields) {
   if (offerId) {
     const offer = offerById(offerId);
     if (!offer || offer.memberId !== currentMember().id) return { error: "Angebot nicht gefunden." };
+    const switchesSeatModel = (offer.type === SINGLE_SEAT_TYPE) !== (values.type === SINGLE_SEAT_TYPE);
+    if (switchesSeatModel && offer.dates.length) return { error: "Zwischen Einzel- und Gruppenterminen lässt sich nur wechseln, solange keine Termine eingetragen sind." };
     Object.assign(offer, values);
     saveState();
     return { offer };
@@ -917,7 +926,10 @@ function saveOffer(offerId, fields) {
   return { offer };
 }
 
+const ownOffer = offerId => { const offer = offerById(offerId); return offer && offer.memberId === currentMember().id ? offer : null; };
+
 function openOfferDialog(offerId) {
+  if (offerId && !ownOffer(offerId)) return;
   const offer = offerId ? offerById(offerId) : { title: "", type: SINGLE_SEAT_TYPE, priceCents: 0, durationMin: 60, location: "Online per Zoom", desc: "" };
   openModal(`<h2>${offerId ? "Angebot bearbeiten" : "Neues Angebot"}</h2>
     <form id="offer-form" novalidate>
@@ -945,7 +957,7 @@ function addOfferDate(offerId, fields) {
   const offer = offerById(offerId);
   if (!offer || offer.memberId !== currentMember().id) return { error: "Angebot nicht gefunden." };
   const seats = isGroupOffer(offer) ? parseInt(fields.seats, 10) : 1;
-  if (!DATE_PATTERN.test(fields.date) || fields.date <= todayIso()) return { error: "Bitte ein Datum ab morgen wählen." };
+  if (!isRealDate(fields.date) || fields.date <= todayIso()) return { error: "Bitte ein Datum ab morgen wählen." };
   if (!TIME_PATTERN.test(fields.time)) return { error: "Bitte eine Uhrzeit wählen." };
   if (!(seats >= 1 && seats <= MAX_SEATS)) return { error: `Plätze zwischen 1 und ${MAX_SEATS} eingeben.` };
   if (offer.dates.some(d => d.date === fields.date && d.time === fields.time)) return { error: "Diesen Termin gibt es schon." };
@@ -965,7 +977,7 @@ function removeOfferDate(offerId, dateId) {
 }
 
 function openDatesDialog(offerId) {
-  const offer = offerById(offerId);
+  const offer = ownOffer(offerId);
   if (!offer) return;
   const group = isGroupOffer(offer);
   const list = upcomingDates(offer).map(d => `<div class="list-item">
@@ -994,7 +1006,8 @@ function openDatesDialog(offerId) {
 }
 
 function confirmDelete(offerId) {
-  const offer = offerById(offerId);
+  const offer = ownOffer(offerId);
+  if (!offer) return;
   const hasSales = state.orders.some(o => o.offerId === offerId);
   openModal(`<h2>Angebot löschen?</h2>
     <p>„${escapeHtml(offer.title)}“ wird ${hasSales ? "aus dem Shop genommen. Weil es schon Verkäufe gibt, bleibt es im Verlauf erhalten." : "endgültig entfernt."}</p>
@@ -1215,6 +1228,7 @@ function handleCheckout(form, offer, dateId) {
       errEl.textContent = "Die Karte wurde abgelehnt. Bitte eine andere Zahlungsart wählen.";
       return;
     }
+    state = loadState();
     if (!isDateBookable(offerById(offer.id), dateId)) {
       paymentInProgress = false;
       payButton.disabled = false;
@@ -1222,7 +1236,8 @@ function handleCheckout(form, offer, dateId) {
       errEl.textContent = "Dieser Termin ist gerade vergeben worden. Bitte einen anderen wählen.";
       return;
     }
-    const order = { id: newId("b"), offerId: offer.id, dateId, buyer, email, grossCents: offer.priceCents, commissionPercent: state.commissionPercent, date: new Date().toISOString().slice(0, 10) };
+    const freshOffer = offerById(offer.id);
+    const order = { id: newId("b"), offerId: freshOffer.id, dateId, buyer, email, grossCents: freshOffer.priceCents, commissionPercent: state.commissionPercent, date: todayIso() };
     paymentInProgress = false;
     state.orders.push(order);
     saveState();
@@ -1317,6 +1332,13 @@ function render() {
   const navKey = ["verifizierung", "mitglied-werden", "postfach", "passwort"].includes(section) ? "bereich" : ["bereich", "admin", "anleitung"].includes(section) ? section : "entdecken";
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("on", a.dataset.nav === navKey));
 }
+
+// Änderungen aus einem anderen Tab übernehmen, damit dort gebuchte Termine hier nicht frei erscheinen.
+window.addEventListener("storage", event => {
+  if (event.key !== STORAGE_NAME || paymentInProgress) return;
+  state = loadState();
+  render();
+});
 
 let lastSection = null;
 window.addEventListener("hashchange", () => {
