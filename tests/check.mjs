@@ -22,7 +22,7 @@ function runPage(storedValue) {
   };
   vm.createContext(context);
   vm.runInContext(script + "\n;globalThis.__state = state; globalThis.__isValidState = isValidState; globalThis.__seed = seedData;"
-    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, createMember, deleteMember, isValidState, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
+    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, createMember, deleteMember, passwordError, confirmEmail, pageInbox, pagePassword, isValidState, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
   const flushTimers = () => { while (timers.length) timers.shift()(); };
   return { context, app, api: context.__api, flushTimers };
 }
@@ -226,6 +226,52 @@ Object.assign(tests, {
     for (const id of ["m2", "m3", "m4"]) assert.equal(api.deleteMember(id), true);
     assert.equal(api.deleteMember("m1"), false);
     assert.equal(api.state.members.length, 1);
+  }
+});
+
+Object.assign(tests, {
+  "Mail: neues Mitglied muss E-Mail bestätigen, vorher keine Gebühr"() {
+    const { api } = runPage();
+    const { member } = api.createMember(NEW_MEMBER);
+    assert.equal(member.emailConfirmed, false);
+    assert.equal(member.email, "mia@example.com");
+    api.ACTIONS["pay-setup"]();
+    assert.equal(member.setupPaid, false);
+    assert.ok(api.pageInbox().includes("Passwort festlegen"));
+    assert.equal(api.confirmEmail(member.id), true);
+    assert.equal(api.confirmEmail(member.id), false, "Link nur einmal gültig");
+    assert.ok(api.pageInbox().includes("Keine neuen Nachrichten"));
+    assert.ok(api.pagePassword().includes("nicht mehr gültig"));
+    assert.equal(api.isValidState(api.state), true);
+  },
+  "Passwort: Regeln für Länge, Zahl und Wiederholung"() {
+    const { api } = runPage();
+    assert.ok(api.passwordError("kurz1", "kurz1"));
+    assert.ok(api.passwordError("nurbuchstabenhier", "nurbuchstabenhier"));
+    assert.ok(api.passwordError("sonnenschein7", "sonnenschein8"));
+    assert.equal(api.passwordError("sonnenschein7", "sonnenschein7"), "");
+  },
+  "Passwort wird nirgends gespeichert"() {
+    const { api, context } = runPage();
+    const { member } = api.createMember(NEW_MEMBER);
+    const form = { querySelector: sel => ({ "#pw1": { value: "geheim12345" }, "#pw2": { value: "geheim12345" }, "#err": { textContent: "" } })[sel], reset() {} };
+    context.location.hash = "#/passwort";
+    vm.runInContext("submitPassword", context)(form);
+    assert.equal(member.emailConfirmed, true);
+    assert.ok(!JSON.stringify(api.state).includes("geheim12345"));
+  },
+  "Mail und Passwortseite escapen Name und E-Mail"() {
+    const { api } = runPage();
+    api.createMember({ ...NEW_MEMBER, name: "<img src=x onerror=alert(1)> Mia", topic: "<b>t</b>", email: "x@example.com" });
+    for (const html of [api.pageInbox(), api.pagePassword()]) {
+      assert.ok(!html.includes("<img src=x") && !html.includes("<b>t</b>"));
+    }
+  },
+  "Speicher: emailConfirmed muss Boolean sein"() {
+    const { api } = runPage();
+    api.createMember(NEW_MEMBER);
+    api.state.members.at(-1).emailConfirmed = "ja";
+    assert.equal(api.isValidState(api.state), false);
   }
 });
 
