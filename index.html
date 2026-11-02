@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-NFEIAtiXI2ACj03YHfd4RREA1hdX1gqw6SSxpKA5+nY='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-/cS2h5Ak0ce2CvBbcrUklpyrw9ExGKolrcgALxq9uK0='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -336,6 +336,7 @@ function pageHome() {
   return `<section class="hero">
       <h1>Lernen, Lachen, Leuchten</h1>
       <p class="lead">Reisen, Kurse und Coachings unserer Mitglieder – direkt buchen und sicher bezahlen.</p>
+      <a class="btn" href="#/mitglied-werden" style="background:#fff;color:var(--blue-dark);margin-top:18px;position:relative;z-index:1">Mitglied werden und verkaufen</a>
     </section>
     <div class="chips">${["Alle", ...CATEGORIES].map(c => `<button class="chip${c === activeCategory ? " on" : ""}" data-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>
     ${offers.length ? `<div class="grid">${offers.map(offerCard).join("")}</div>` : `<div class="panel empty">In diesem Bereich gibt es gerade keine buchbaren Angebote.</div>`}`;
@@ -475,8 +476,10 @@ function memberOverview(member) {
     { done: member.status === "aktiv", title: "Freigabe durch Family Travel Business", text: "Wir schauen kurz drüber, dann ist dein Profil sichtbar.", action: `<span class="badge amber">in Prüfung</span>` }
   ];
   const ready = steps.every(s => s.done);
+  const waitsForApproval = member.setupPaid && member.payouts && member.status !== "aktiv";
   return `${ready ? "" : `<div class="panel" style="margin-bottom:24px"><h2>In drei Schritten verkaufen</h2>
-      ${steps.map(s => `<div class="list-item"><div class="grow"><b>${s.title}</b><div class="meta" style="color:var(--muted)">${s.text}</div></div>${s.done ? `<span class="badge green">erledigt</span>` : s.action}</div>`).join("")}</div>`}
+      ${steps.map(s => `<div class="list-item"><div class="grow"><b>${s.title}</b><div class="meta" style="color:var(--muted)">${s.text}</div></div>${s.done ? `<span class="badge green">erledigt</span>` : s.action}</div>`).join("")}
+      ${waitsForApproval ? `<p class="note" style="margin-top:14px">Vorführung: Wechsle jetzt in die <a href="#/admin/mitglieder" style="color:var(--blue)">Verwaltung</a> und gib ${escapeHtml(member.name)} frei. Im echten Betrieb macht das Dirk.</p>` : ""}</div>`}
     <div class="kpis">
       <div class="kpi"><span>Verkäufe</span><b>${sales.length}</b></div>
       <div class="kpi"><span>Ausgezahlt an dich</span><b>${euro(payoutTotal)}</b></div>
@@ -549,10 +552,11 @@ function adminMembers() {
       <td>${m.setupPaid ? `<span class="badge green">bezahlt</span>` : `<span class="badge amber">offen</span>`}</td>
       <td>${m.payouts ? `<span class="badge green">ja</span>` : `<span class="badge amber">nein</span>`}</td>
       <td>${statusBadge(m)}</td>
-      <td style="text-align:right;white-space:nowrap">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : m.setupPaid && m.payouts ? `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>` : `<span class="meta" style="color:var(--muted)">wartet auf Mitglied</span>`}</td>
+      <td style="text-align:right;white-space:nowrap">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : m.setupPaid && m.payouts ? `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>` : `<span class="meta" style="color:var(--muted)">wartet auf Mitglied</span>`}
+        ${memberSales(m.id).length || state.members.length < 2 ? "" : `<button class="btn ghost small" data-action="delete-member" data-id="${m.id}" style="margin-left:6px">Löschen</button>`}</td>
     </tr>`).join("")}
     </tbody></table></div>
-    <p class="note" style="margin-top:16px">Gesperrte Mitglieder bleiben mit ihren Verkäufen erhalten, ihre Angebote sind aber nicht mehr buchbar.</p>`;
+    <p class="note" style="margin-top:16px">Mitglieder mit Verkäufen lassen sich nur sperren, damit der Verlauf erhalten bleibt. Gesperrte Angebote sind nicht mehr buchbar.</p>`;
 }
 
 function adminSettings() {
@@ -592,7 +596,7 @@ function pageGuide() {
     <div class="two">
       <div class="panel"><h2>In 6 Schritten startklar</h2>
         ${GUIDE_STEPS.map(([title, text], i) => `<div class="list-item" style="align-items:flex-start"><div class="avatar" style="background:var(--blue);width:36px;height:36px;font-size:15px">${i + 1}</div><div class="grow"><b>${escapeHtml(title)}</b><div style="color:var(--muted);font-size:15px">${escapeHtml(text)}</div></div></div>`).join("")}
-        <a class="btn" href="#/bereich" style="margin-top:18px">Zu meinem Bereich</a>
+        <a class="btn" href="#/mitglied-werden" style="margin-top:18px">Jetzt Mitglied werden</a>
       </div>
       <div class="panel"><h2>Das brauchst du</h2>
         <div class="lines">
@@ -606,6 +610,80 @@ function pageGuide() {
     </div>
     <h2 style="margin-top:36px">Häufige Fragen</h2>
     <div class="panel">${GUIDE_FAQ.map(([q, a]) => `<details class="faq"><summary>${escapeHtml(q)}</summary><p>${escapeHtml(a)}</p></details>`).join("")}</div>`;
+}
+
+/* ---------- Mitglied werden ---------- */
+
+const SIGNUP_LIMITS = { name: 80, topic: 80, city: 60, bio: 600 };
+
+function pageSignup() {
+  return `<div class="vshell"><a class="back" href="#/">← Zurück</a>
+    <form class="vcard" id="signup-form" novalidate>
+      <h2>Mitglied werden</h2>
+      <p class="vmuted">Lege dein Profil an. Danach führen wir dich Schritt für Schritt zum ersten Verkauf.</p>
+      <p class="note" style="margin:10px 0 4px">Vorschau: bitte keine echten Daten eingeben. Das Profil bleibt nur in diesem Browser und wird nirgendwohin gesendet.</p>
+      <label for="s-name">Vor- und Nachname</label><input id="s-name" maxlength="${SIGNUP_LIMITS.name}" value="Mia Sonnenberg">
+      <label for="s-email">E-Mail</label><input id="s-email" type="email" maxlength="120" value="mia@example.com">
+      <label for="s-topic">Dein Thema</label><input id="s-topic" maxlength="${SIGNUP_LIMITS.topic}" value="Yoga für Familien">
+      <div class="split"><div><label for="s-cat">Bereich</label><select id="s-cat">${CATEGORIES.map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></div>
+        <div><label for="s-city">Ort</label><input id="s-city" maxlength="${SIGNUP_LIMITS.city}" value="Gran Canaria"></div></div>
+      <label for="s-bio">Über dich (kurz)</label><textarea id="s-bio" rows="3" maxlength="${SIGNUP_LIMITS.bio}">Ich bringe Familien mit Yoga und Atemübungen zur Ruhe, gern auch auf Reisen.</textarea>
+      <div class="err" id="err"></div>
+      <button class="btn wide" type="submit">Profil anlegen</button>
+      <p class="vmuted small" style="margin-top:12px">Als Nächstes: Einrichtungsgebühr, Verifizierung bei Stripe, Freigabe.</p>
+    </form></div>`;
+}
+
+function createMember(fields) {
+  const name = fields.name.trim();
+  const topic = fields.topic.trim();
+  const city = fields.city.trim();
+  if (!name || !topic || !city) return { error: "Bitte Name, Thema und Ort ausfüllen." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email.trim())) return { error: "Bitte eine gültige E-Mail-Adresse eingeben." };
+  if (!CATEGORIES.includes(fields.category)) return { error: "Bitte einen Bereich wählen." };
+  const member = {
+    id: newId("m"), name: name.slice(0, SIGNUP_LIMITS.name), topic: topic.slice(0, SIGNUP_LIMITS.topic), category: fields.category,
+    city: city.slice(0, SIGNUP_LIMITS.city), color: state.members.length % GRADIENTS.length, status: "wartet", payouts: false, setupPaid: false,
+    bio: fields.bio.trim().slice(0, SIGNUP_LIMITS.bio)
+  };
+  state.members.push(member);
+  state.currentMemberId = member.id;
+  saveState();
+  return { member };
+}
+
+function submitSignup(form) {
+  const value = id => form.querySelector(id)?.value ?? "";
+  const result = createMember({ name: value("#s-name"), email: value("#s-email"), topic: value("#s-topic"), category: value("#s-cat"), city: value("#s-city"), bio: value("#s-bio") });
+  if (result.error) { form.querySelector("#err").textContent = result.error; return; }
+  location.hash = "#/bereich";
+  toast(`Willkommen, ${result.member.name.split(" ")[0]}!`);
+}
+
+// Nur Mitglieder ohne Verkäufe sind löschbar; mit Verkäufen bleibt nur Sperren.
+function deleteMember(memberId) {
+  const member = memberById(memberId);
+  if (!member || memberSales(memberId).length || state.members.length < 2) return false;
+  state.members = state.members.filter(m => m.id !== memberId);
+  state.offers = state.offers.filter(o => o.memberId !== memberId);
+  state.setupFees = state.setupFees.filter(f => f.memberId !== memberId);
+  if (state.currentMemberId === memberId) state.currentMemberId = state.members[0].id;
+  if (verification?.memberId === memberId) verification = null;
+  saveState();
+  return true;
+}
+
+function confirmDeleteMember(memberId) {
+  const member = memberById(memberId);
+  if (!member) return;
+  openModal(`<h2>${escapeHtml(member.name)} löschen?</h2>
+    <p>Profil, Angebote und die bezahlte Einrichtungsgebühr werden aus der Vorschau entfernt.</p>
+    <div class="actions" style="justify-content:flex-end"><button class="btn ghost" data-close>Behalten</button><button class="btn" style="background:var(--red)" id="confirm-del-member">Löschen</button></div>`, bg => {
+    bg.querySelector("#confirm-del-member").addEventListener("click", () => {
+      const removed = deleteMember(memberId);
+      closeModal(); render(); toast(removed ? "Mitglied gelöscht" : "Mitglied mit Verkäufen lässt sich nur sperren");
+    });
+  });
 }
 
 function pageNotFound() {
@@ -922,6 +1000,7 @@ const ACTIONS = {
   "export": () => exportCsv(),
   "view-as": id => { state.currentMemberId = id; saveState(); location.hash = "#/bereich/verkaeufe"; },
   "approve": id => { const m = memberById(id); if (!m?.setupPaid || !m.payouts) return; m.status = "aktiv"; saveState(); render(); toast("Mitglied freigegeben"); },
+  "delete-member": id => confirmDeleteMember(id),
   "block": id => { memberById(id).status = "gesperrt"; saveState(); render(); toast("Mitglied gesperrt"); }
 };
 
@@ -945,10 +1024,11 @@ document.getElementById("app").addEventListener("submit", e => {
   if (e.target.id === "profile-form") saveProfile(e.target);
   if (e.target.id === "settings-form") saveSettings(e.target);
   if (e.target.id === "verify-form" && activeVerification()) submitVerificationStep(e.target);
+  if (e.target.id === "signup-form") submitSignup(e.target);
 });
 
 document.getElementById("reset").addEventListener("click", () => {
-  state = seedData(); saveState(); location.hash = "#/"; render(); toast("Testdaten zurückgesetzt");
+  verification = null; state = seedData(); saveState(); location.hash = "#/"; render(); toast("Testdaten zurückgesetzt");
 });
 
 /* ---------- Router ---------- */
@@ -964,10 +1044,11 @@ function render() {
     bereich: () => pageMemberArea(param),
     admin: () => pageAdmin(param),
     anleitung: () => pageGuide(),
-    verifizierung: () => pageVerification()
+    verifizierung: () => pageVerification(),
+    "mitglied-werden": () => pageSignup()
   };
   document.getElementById("app").innerHTML = (Object.hasOwn(routes, section) ? routes[section] : pageNotFound)();
-  const navKey = section === "verifizierung" ? "bereich" : ["bereich", "admin", "anleitung"].includes(section) ? section : "entdecken";
+  const navKey = section === "verifizierung" || section === "mitglied-werden" ? "bereich" : ["bereich", "admin", "anleitung"].includes(section) ? section : "entdecken";
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("on", a.dataset.nav === navKey));
 }
 

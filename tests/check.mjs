@@ -22,7 +22,7 @@ function runPage(storedValue) {
   };
   vm.createContext(context);
   vm.runInContext(script + "\n;globalThis.__state = state; globalThis.__isValidState = isValidState; globalThis.__seed = seedData;"
-    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
+    + "globalThis.__api = { get verification() { return verification; }, get state() { return state; }, startVerification, createMember, deleteMember, isValidState, stepError, submitVerificationStep, runVerificationCheck, pageVerification, ACTIONS, render };", context);
   const flushTimers = () => { while (timers.length) timers.shift()(); };
   return { context, app, api: context.__api, flushTimers };
 }
@@ -178,6 +178,44 @@ Object.assign(tests, {
     assert.ok(!app.innerHTML.includes("<img src=x"));
     assert.ok(!app.innerHTML.includes("<b>x</b>"));
     assert.ok(app.innerHTML.includes("&lt;img src=x"));
+  }
+});
+
+const NEW_MEMBER = { name: "Mia Sonnenberg", email: "mia@example.com", topic: "Yoga", category: "Gesundheit", city: "Gran Canaria", bio: "Kurz" };
+
+Object.assign(tests, {
+  "Mitglied werden: legt gültiges, nicht freigeschaltetes Mitglied an"() {
+    const { api } = runPage();
+    const { member } = api.createMember(NEW_MEMBER);
+    assert.equal(api.state.currentMemberId, member.id);
+    assert.equal(member.status, "wartet"); assert.equal(member.setupPaid, false); assert.equal(member.payouts, false);
+    assert.equal(api.isValidState(api.state), true);
+    assert.equal(runPage(JSON.stringify(api.state)).context.__state.members.length, 5, "übersteht Neuladen");
+  },
+  "Mitglied werden: lehnt fehlende Felder, falsche E-Mail und fremden Bereich ab"() {
+    const { api } = runPage();
+    assert.ok(api.createMember({ ...NEW_MEMBER, name: " " }).error);
+    assert.ok(api.createMember({ ...NEW_MEMBER, email: "mia" }).error);
+    assert.ok(api.createMember({ ...NEW_MEMBER, category: "<img src=x>" }).error);
+    assert.equal(api.state.members.length, 4);
+  },
+  "Mitglied werden: überlange Eingaben werden gekürzt, Speicher bleibt gültig"() {
+    const { api } = runPage();
+    const { member } = api.createMember({ ...NEW_MEMBER, name: "x".repeat(5000), bio: "y".repeat(5000) });
+    assert.ok(member.name.length <= 80 && member.bio.length <= 600);
+    assert.equal(api.isValidState(api.state), true);
+  },
+  "Mitglied löschen: nur ohne Verkäufe, Speicher bleibt gültig"() {
+    const { api } = runPage();
+    assert.equal(api.deleteMember("m2"), false, "Marco hat Verkäufe");
+    const { member } = api.createMember(NEW_MEMBER);
+    api.state.setupFees.push({ memberId: member.id, cents: 29900, date: "2026-11-02" });
+    assert.equal(api.deleteMember(member.id), true);
+    assert.ok(!api.state.members.some(m => m.id === member.id));
+    assert.ok(!api.state.setupFees.some(f => f.memberId === member.id));
+    assert.notEqual(api.state.currentMemberId, member.id);
+    assert.equal(api.isValidState(api.state), true);
+    assert.equal(api.deleteMember("gibtsnicht"), false);
   }
 });
 
