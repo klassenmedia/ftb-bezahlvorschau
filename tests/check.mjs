@@ -210,12 +210,22 @@ Object.assign(tests, {
     assert.equal(api.deleteMember("m2"), false, "Marco hat Verkäufe");
     const { member } = api.createMember(NEW_MEMBER);
     api.state.setupFees.push({ memberId: member.id, cents: 29900, date: "2026-11-02" });
+    api.state.offers.push({ id: "oneu1", memberId: member.id, title: "Yoga", type: "Kurs", priceCents: 4500, desc: "" });
     assert.equal(api.deleteMember(member.id), true);
+    assert.ok(!api.state.offers.some(o => o.memberId === member.id), "Angebote mitgelöscht");
+    assert.equal(runPage(JSON.stringify(api.state)).context.__state.members.length, 4, "übersteht Neuladen");
     assert.ok(!api.state.members.some(m => m.id === member.id));
     assert.ok(!api.state.setupFees.some(f => f.memberId === member.id));
     assert.notEqual(api.state.currentMemberId, member.id);
     assert.equal(api.isValidState(api.state), true);
     assert.equal(api.deleteMember("gibtsnicht"), false);
+  },
+  "Mitglied löschen: letztes Mitglied bleibt"() {
+    const { api } = runPage();
+    api.state.orders = [];
+    for (const id of ["m2", "m3", "m4"]) assert.equal(api.deleteMember(id), true);
+    assert.equal(api.deleteMember("m1"), false);
+    assert.equal(api.state.members.length, 1);
   }
 });
 

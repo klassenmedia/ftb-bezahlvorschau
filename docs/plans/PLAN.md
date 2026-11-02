@@ -5,8 +5,9 @@ Ziel: Dirk Adams zeigen, wie das Vermittlermodell mit Stripe Connect (Direct Cha
 ## Stand (02.11.2026)
 
 - Entdecken, Angebot, Kasse mit Testkarten, Aufteilung der Zahlung
+- Mitglied werden: Anmeldung führt durch Gebühr, Verifizierung, Freigabe und erstes Angebot
 - Mein Bereich: Einrichtungsgebühr, Verifizierung (Nachbau des Stripe-Ablaufs inkl. Adressnachweis), Angebote anlegen/bearbeiten/löschen, Verkäufe, Profil
-- Verwaltung: Kennzahlen, Mitglieder freigeben/sperren, Provision/Gebühr, CSV-Export
+- Verwaltung: Kennzahlen, Mitglieder freigeben/sperren/löschen (löschen nur ohne Verkäufe, nie das letzte), Provision/Gebühr, CSV-Export
 - Anleitung „So verkaufst du“
 - Tests: `node tests/check.mjs` (Speicher, Escaping, Verifizierung, CSP-Hash)
 
@@ -21,7 +22,7 @@ Ziel: Dirk Adams zeigen, wie das Vermittlermodell mit Stripe Connect (Direct Cha
 | Input | Gegenmaßnahme |
 |---|---|
 | localStorage `ftb-vorschau-v1` | `isValidState` prüft Struktur, IDs, Zahlen, Datumswerte; sonst Testdaten |
-| Formularfelder (Angebot, Profil, Kasse, Verifizierung) | `escapeHtml` vor jedem `innerHTML`, Längenbegrenzung, Wertebereiche |
+| Formularfelder (Anmeldung, Angebot, Profil, Kasse, Verifizierung) | `escapeHtml` vor jedem `innerHTML`, Längenbegrenzung/Kürzung, Bereichs-Allowlist, Wertebereiche |
 | URL-Hash | Routen per `Object.hasOwn`, unbekannte IDs → „Seite gibt es nicht“ |
 | `data-id` in Aktionen | Allowlists (`SAMPLE_FIELDS`, `SELLER_KINDS`, `DOC_TYPES`), Verifizierung an `memberId` gebunden |
 | Kartennummer | nur die zwei Testkarten werden angenommen |
@@ -31,11 +32,13 @@ Ziel: Dirk Adams zeigen, wie das Vermittlermodell mit Stripe Connect (Direct Cha
 ## Bewusst akzeptiert (nur Vorschau)
 
 - Doppelbuchung bei Wegnavigieren während der Zahlung, Preisänderung während der Zahlung
+- Review 02.11. (Mitglied werden): Doppel-Absenden legt zwei Mitglieder an; keine Obergrenze für Mitglieder; Escaping in Lösch-Dialog und Vorführhinweis ohne eigenen Test; Dialogtext nennt Gebühr auch wenn unbezahlt
 - Gemeinsamer Origin `klassenmedia.github.io` (eigene Subdomain erst für den echten Bau)
-- Review 02.11.: setupPaid-Prüfung im Timeout und Submit-Absicherung ohne eigenen Test; „Testdaten zurücksetzen“ verwirft laufende Verifizierung nicht (`verification = null` im Reset ergänzen)
+- Review 02.11.: setupPaid-Prüfung im Timeout und Submit-Absicherung ohne eigenen Test
 
 ## Offen vor dem echten Bau
 
 - Stripe-Konto der LLC (US-Bankkonto, Wohnadresse Dirk), Cross-Border Direct Charges mit Stripe klären
 - DAC7-Registrierung in einem EU-Staat, Steuer-Wohnsitz Dirk, Pauschalreise/Sicherungsschein bei Reise-Angeboten
+- Gelöschte Mitglieder: Zahlungsdaten (Einrichtungsgebühr) für die Buchhaltung aufbewahren statt löschen
 - Freigabe- und Zahlungslogik serverseitig; Stripe-Webhooks mit Signaturprüfung; CoachKraft-Connect-Plan als Vorlage
