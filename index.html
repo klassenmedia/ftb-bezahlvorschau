@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-e+EEP2RUH8LViR/AA4xYTwgqk2IwXvC9XdJkjVOiaRg='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-YpoCn9p0tgTCuhKOf8X/jn/etoS60CUvTycg13K8+uE='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -156,6 +156,12 @@ td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
 .mailbody p{margin:0 0 14px}
 .mailsmall{font-size:13px;color:var(--muted)}
 .mailfoot{text-align:center;font-size:12px;color:var(--muted);padding:16px}
+.slots{display:grid;gap:8px}
+.slot{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px}
+a.slot:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.slot span{font-size:13px;color:var(--green);white-space:nowrap}
+.slot.off{opacity:.55}
+.slot.off span{color:var(--muted)}
 footer{border-top:1px solid var(--line);padding:24px 0;font-size:13px;color:var(--muted)}
 @media (max-width:820px){
   .two{grid-template-columns:1fr}
@@ -190,13 +196,18 @@ footer{border-top:1px solid var(--line);padding:24px 0;font-size:13px;color:var(
 <script>
 "use strict";
 
-const STORAGE_NAME = "ftb-vorschau-v1";
+const STORAGE_NAME = "ftb-vorschau-v2";
 const CATEGORIES = ["Gesundheit", "Persönlichkeit", "Kreativität", "Wissen & Beruf"];
 const STRIPE_PERCENT = 1.5;
 const STRIPE_FIXED_CENTS = 25;
 const DECLINED_TEST_CARD = "4000000000000002";
 const SUCCESS_TEST_CARD = "4242424242424242";
 const PROCESSING_DELAY_MS = 1400;
+const OFFER_TYPES = ["Coaching 1:1", "Gruppen-Coaching", "Training", "Workshop"];
+const SINGLE_SEAT_TYPE = "Coaching 1:1";
+const MAX_SEATS = 500;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const GRADIENTS = [
   "linear-gradient(135deg,#2f6bd8,#8fb3ee)",
@@ -207,38 +218,80 @@ const GRADIENTS = [
   "linear-gradient(135deg,#0f8a9d,#8fd9e3)"
 ];
 
+function isoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// Demotermine liegen relativ zu heute, damit die Vorschau nie veraltet.
+function dayFromToday(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+const todayIso = () => isoDate(new Date());
+
 function seedData() {
+  const slot = (id, days, time, seats = 1) => ({ id, date: dayFromToday(days), time, seats });
+  const order = (id, offerId, dateId, buyer, grossCents, daysAgo) =>
+    ({ id, offerId, dateId, buyer, email: "kunde@example.com", grossCents, commissionPercent: 15, date: dayFromToday(-daysAgo) });
   return {
     commissionPercent: 15,
     setupFeeCents: 29900,
     currentMemberId: "m1",
     members: [
-      { id: "m1", name: "Lena Hoffmann", topic: "Achtsamkeit & Reisen", category: "Persönlichkeit", city: "Freiburg", color: 0, status: "aktiv", payouts: true, setupPaid: true,
-        bio: "Ich begleite Familien, die unterwegs zur Ruhe finden wollen – mit Retreats, Online-Kursen und 1:1-Gesprächen." },
+      { id: "m1", name: "Lena Hoffmann", topic: "Achtsamkeit & Gelassenheit", category: "Persönlichkeit", city: "Freiburg", color: 0, status: "aktiv", payouts: true, setupPaid: true,
+        bio: "Ich begleite Eltern und Selbstständige zu mehr Ruhe im Alltag – im 1:1-Coaching per Zoom und in Workshops vor Ort." },
       { id: "m2", name: "Marco Weiß", topic: "Social Media für Selbstständige", category: "Wissen & Beruf", city: "Köln", color: 3, status: "aktiv", payouts: true, setupPaid: true,
         bio: "Sichtbar werden, ohne sich zu verbiegen: Ich zeige dir, wie du mit ehrlichem Content Kunden gewinnst." },
       { id: "m3", name: "Aylin Kaya", topic: "Ayurveda & Ernährung", category: "Gesundheit", city: "Teneriffa", color: 1, status: "aktiv", payouts: true, setupPaid: true,
-        bio: "Ayurvedische Küche und Routinen, die in den Familienalltag passen – zu Hause und auf Reisen." },
+        bio: "Ayurvedische Ernährung, die in den Familienalltag passt – in der Beratung per Zoom und im Kochtraining auf Teneriffa." },
+      { id: "m5", name: "Andreas Klassen", topic: "Face Reading & Menschenkenntnis", category: "Kreativität", city: "Bad Oeynhausen", color: 5, status: "aktiv", payouts: true, setupPaid: true,
+        bio: "Ich lese Gesichter und zeige dir live im Gespräch, was sie über Stärken, Kommunikation und Beziehungen verraten." },
       { id: "m4", name: "Jonas Berger", topic: "Fotografie unterwegs", category: "Kreativität", city: "Lissabon", color: 2, status: "wartet", payouts: false, setupPaid: false,
         bio: "Reisefotografie mit dem Handy: schöne Erinnerungen statt tausend verwackelter Bilder." }
     ],
     offers: [
-      { id: "o1", memberId: "m1", title: "Familien-Retreat Gran Canaria", type: "Reise", priceCents: 129000, desc: "5 Tage am Meer mit Meditation, Kinderprogramm und viel freier Zeit. Unterkunft inklusive." },
-      { id: "o2", memberId: "m1", title: "Achtsam unterwegs – Online-Kurs", type: "Kurs", priceCents: 14900, desc: "8 kurze Lektionen für mehr Gelassenheit im Reisealltag, mit Übungen für Kinder." },
-      { id: "o3", memberId: "m2", title: "Content-Boost 1:1 (3 Termine)", type: "Coaching", priceCents: 49000, desc: "Drei Termine à 60 Minuten: Profil, Content-Plan und deine ersten Reels." },
-      { id: "o4", memberId: "m2", title: "Crashkurs Instagram", type: "Kurs", priceCents: 9700, desc: "In 90 Minuten vom leeren Profil zum klaren Auftritt." },
-      { id: "o5", memberId: "m3", title: "Ayurveda-Kochkurs für Familien", type: "Kurs", priceCents: 7900, desc: "Vier einfache Rezepte live, mit Einkaufsliste und Gewürzplan." },
-      { id: "o6", memberId: "m3", title: "Persönliche Ernährungsberatung", type: "Coaching", priceCents: 18000, desc: "Typbestimmung, Gespräch und ein Plan, der zu eurem Alltag passt." }
+      { id: "o1", memberId: "m1", title: "Achtsamkeits-Coaching 1:1", type: "Coaching 1:1", priceCents: 12000, durationMin: 60, location: "Online per Zoom",
+        desc: "Ein persönliches Gespräch, in dem wir herausfinden, was dich stresst und was dir guttut. Du gehst mit zwei, drei Übungen für deinen Alltag raus.",
+        dates: [slot("d11", 3, "10:00"), slot("d12", 3, "14:00"), slot("d13", 6, "09:00"), slot("d14", 10, "16:00")] },
+      { id: "o2", memberId: "m1", title: "Workshop: Gelassen reisen mit Kindern", type: "Workshop", priceCents: 8900, durationMin: 180, location: "Freiburg, Seminarraum Wiehre",
+        desc: "Drei Stunden mit Übungen, Austausch und einem Plan für die nächste Familienreise. Für Eltern, Kinder bleiben zu Hause.",
+        dates: [slot("d21", 12, "10:00", 12), slot("d22", 26, "10:00", 12)] },
+      { id: "o3", memberId: "m2", title: "Social-Media-Strategie 1:1", type: "Coaching 1:1", priceCents: 19000, durationMin: 90, location: "Online per Zoom",
+        desc: "Wir schauen uns dein Profil an und erarbeiten einen Plan für die nächsten vier Wochen: Themen, Formate, Rhythmus.",
+        dates: [slot("d31", 2, "11:00"), slot("d32", 5, "15:00"), slot("d33", 9, "11:00")] },
+      { id: "o4", memberId: "m2", title: "Instagram-Training live", type: "Training", priceCents: 9700, durationMin: 120, location: "Online per Zoom",
+        desc: "Zwei Stunden live: vom leeren Profil zum klaren Auftritt. Mit Fragerunde am Ende.",
+        dates: [slot("d41", 8, "18:00", 20), slot("d42", 22, "18:00", 20)] },
+      { id: "o5", memberId: "m3", title: "Ayurveda-Ernährungsberatung 1:1", type: "Coaching 1:1", priceCents: 14000, durationMin: 60, location: "Online per Zoom",
+        desc: "Typbestimmung, Gespräch über deine Ernährung und ein einfacher Plan, der zu eurem Alltag passt.",
+        dates: [slot("d51", 4, "09:30"), slot("d52", 7, "17:00")] },
+      { id: "o6", memberId: "m3", title: "Ayurveda-Kochtraining", type: "Workshop", priceCents: 6900, durationMin: 150, location: "Teneriffa, Puerto de la Cruz",
+        desc: "Wir kochen gemeinsam vier ayurvedische Gerichte und essen zusammen. Alle Zutaten sind im Preis enthalten.",
+        dates: [slot("d61", 15, "17:00", 8)] },
+      { id: "o7", memberId: "m5", title: "Face Reading live per Zoom", type: "Coaching 1:1", priceCents: 49900, durationMin: 60, location: "Online per Zoom",
+        desc: "Ein persönliches Reading im Live-Gespräch: deine Stärken, dein Kommunikationsstil und was das für Beruf und Beziehungen bedeutet.",
+        dates: [slot("d71", 5, "19:00"), slot("d72", 11, "19:00"), slot("d73", 18, "10:00")] },
+      { id: "o8", memberId: "m5", title: "Face Reading für Paare", type: "Coaching 1:1", priceCents: 79900, durationMin: 90, location: "Online per Zoom",
+        desc: "Zwei Gesichter, ein Gespräch: Wo ihr euch ergänzt, wo es reibt und wie ihr besser miteinander redet.",
+        dates: [slot("d81", 13, "19:00"), slot("d82", 20, "18:00")] },
+      { id: "o9", memberId: "m4", title: "Handyfoto-Workshop in Lissabon", type: "Workshop", priceCents: 5900, durationMin: 120, location: "Lissabon, Praça do Comércio",
+        desc: "Zwei Stunden Fotospaziergang: Licht, Bildaufbau und Bearbeitung direkt am Handy.",
+        dates: [slot("d91", 16, "17:00", 10)] }
     ],
     orders: [
-      { id: "b1001", offerId: "o3", buyer: "Sabine M.", email: "sabine@example.com", grossCents: 49000, commissionPercent: 15, date: "2026-10-21" },
-      { id: "b1002", offerId: "o5", buyer: "Familie Roth", email: "roth@example.com", grossCents: 7900, commissionPercent: 15, date: "2026-10-27" },
-      { id: "b1003", offerId: "o1", buyer: "Kai L.", email: "kai@example.com", grossCents: 129000, commissionPercent: 15, date: "2026-10-30" }
+      order("b1001", "o3", "d31", "Sabine M.", 19000, 6),
+      order("b1002", "o2", "d21", "Familie Roth", 8900, 4),
+      order("b1003", "o2", "d21", "Kai L.", 8900, 2),
+      order("b1004", "o7", "d71", "Petra S.", 49900, 3),
+      order("b1005", "o4", "d41", "Tom B.", 9700, 1)
     ],
     setupFees: [
-      { memberId: "m1", cents: 29900, date: "2026-09-12" },
-      { memberId: "m2", cents: 29900, date: "2026-09-18" },
-      { memberId: "m3", cents: 29900, date: "2026-10-02" }
+      { memberId: "m1", cents: 29900, date: dayFromToday(-50) },
+      { memberId: "m2", cents: 29900, date: dayFromToday(-44) },
+      { memberId: "m3", cents: 29900, date: dayFromToday(-30) },
+      { memberId: "m5", cents: 29900, date: dayFromToday(-20) }
     ]
   };
 }
@@ -257,13 +310,17 @@ function isValidState(data) {
   if (!isPercent(data.commissionPercent) || !isCents(data.setupFeeCents) || !isSafeId(data.currentMemberId)) return false;
   const memberIds = new Set(members.map(m => m && m.id));
   const offerIds = new Set(offers.map(o => o && o.id));
+  const dateIdsByOffer = new Map(offers.map(o => [o && o.id, new Set(Array.isArray(o?.dates) ? o.dates.map(d => d && d.id) : [])]));
+  const isValidDate = d => d && isSafeId(d.id) && DATE_PATTERN.test(d.date) && TIME_PATTERN.test(d.time) && Number.isInteger(d.seats) && d.seats >= 1 && d.seats <= MAX_SEATS;
   return members.every(m => m && isSafeId(m.id) && [m.name, m.topic, m.category, m.city, m.bio, m.status].every(isText)
       && Number.isInteger(m.color) && m.color >= 0 && typeof m.payouts === "boolean" && typeof m.setupPaid === "boolean"
       && (m.email === undefined || (typeof m.email === "string" && m.email.length <= 120))
       && (m.emailConfirmed === undefined || typeof m.emailConfirmed === "boolean"))
-    && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.type, o.desc].every(isText) && isPrice(o.priceCents)
+    && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.desc, o.location].every(isText) && OFFER_TYPES.includes(o.type)
+      && isPrice(o.priceCents) && Number.isInteger(o.durationMin) && o.durationMin >= 15 && o.durationMin <= 1440
+      && Array.isArray(o.dates) && o.dates.every(isValidDate)
       && (o.archived === undefined || typeof o.archived === "boolean"))
-    && orders.every(o => o && isSafeId(o.id) && offerIds.has(o.offerId) && isText(o.buyer) && isCents(o.grossCents)
+    && orders.every(o => o && isSafeId(o.id) && offerIds.has(o.offerId) && dateIdsByOffer.get(o.offerId).has(o.dateId) && isText(o.buyer) && isCents(o.grossCents)
       && isPercent(o.commissionPercent) && /^\d{4}-\d{2}-\d{2}$/.test(o.date))
     && setupFees.every(f => f && memberIds.has(f.memberId) && isCents(f.cents) && /^\d{4}-\d{2}-\d{2}$/.test(f.date))
     && memberIds.has(data.currentMemberId);
@@ -323,7 +380,26 @@ const currentMember = () => memberById(state.currentMemberId) || state.members[0
 const offerById = id => state.offers.find(o => o.id === id);
 const initials = name => name.split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase();
 const avatar = (member, big) => `<div class="avatar${big ? " big" : ""}" style="background:${GRADIENTS[member.color % GRADIENTS.length]}">${escapeHtml(initials(member.name))}</div>`;
-const isBookable = offer => { const m = memberById(offer.memberId); return !offer.archived && m && m.status === "aktiv" && m.payouts; };
+const sellerReady = offer => { const m = offer && memberById(offer.memberId); return Boolean(offer && !offer.archived && m && m.status === "aktiv" && m.payouts); };
+const bookedSeats = (offer, dateId) => state.orders.filter(o => o.offerId === offer.id && o.dateId === dateId).length;
+const freeSeats = (offer, date) => date.seats - bookedSeats(offer, date.id);
+const upcomingDates = offer => offer.dates.filter(d => d.date > todayIso()).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+const bookableDates = offer => upcomingDates(offer).filter(d => freeSeats(offer, d) > 0);
+const isBookable = offer => sellerReady(offer) && bookableDates(offer).length > 0;
+const dateById = (offer, dateId) => offer?.dates.find(d => d.id === dateId);
+const isDateBookable = (offer, dateId) => { const d = dateById(offer, dateId); return sellerReady(offer) && Boolean(d) && d.date > todayIso() && freeSeats(offer, d) > 0; };
+const isGroupOffer = offer => offer.type !== SINGLE_SEAT_TYPE;
+
+function formatSlot(date) {
+  const day = new Date(date.date + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${day} · ${date.time} Uhr`;
+}
+
+function seatsLabel(offer, date) {
+  const free = freeSeats(offer, date);
+  if (free <= 0) return isGroupOffer(offer) ? "ausgebucht" : "vergeben";
+  return isGroupOffer(offer) ? `noch ${free} von ${date.seats} Plätzen` : "frei";
+}
 const newId = prefix => prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 function toast(message) {
@@ -341,7 +417,9 @@ function offerCard(offer) {
     <div class="body">
       <h3>${escapeHtml(offer.title)}</h3>
       <div class="seller">${avatar(member)}<div><b>${escapeHtml(member.name)}</b><div class="meta">${escapeHtml(member.topic)}</div></div></div>
-      <div class="row"><span class="price">${euro(offer.priceCents)}</span><span class="btn small">Ansehen</span></div>
+      <div class="meta">${escapeHtml(offer.location)} · ${offer.durationMin} Min.</div>
+      ${bookableDates(offer)[0] ? `<div class="meta">Nächster Termin: <b>${formatSlot(bookableDates(offer)[0])}</b></div>` : ""}
+      <div class="row"><span class="price">${euro(offer.priceCents)}</span><span class="btn small">Termin wählen</span></div>
     </div></a>`;
 }
 
@@ -353,7 +431,7 @@ function pageHome() {
   const offers = state.offers.filter(isBookable).filter(o => activeCategory === "Alle" || memberById(o.memberId).category === activeCategory);
   return `<section class="hero">
       <h1>Lernen, Lachen, Leuchten</h1>
-      <p class="lead">Reisen, Kurse und Coachings unserer Mitglieder – direkt buchen und sicher bezahlen.</p>
+      <p class="lead">Coachings, Trainings und Workshops unserer Mitglieder – Termin wählen und sicher bezahlen.</p>
       <a class="btn" href="#/mitglied-werden" style="background:#fff;color:var(--blue-dark);margin-top:18px;position:relative;z-index:1">Mitglied werden und verkaufen</a>
     </section>
     <div class="chips">${["Alle", ...CATEGORIES].map(c => `<button class="chip${c === activeCategory ? " on" : ""}" data-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>
@@ -389,8 +467,13 @@ function pageOffer(id) {
       </div>
       <div class="panel">
         <div class="price" style="font-size:32px">${euro(offer.priceCents)}</div>
-        <p class="meta" style="color:var(--muted);margin:4px 0 18px">inkl. aller Kosten, Rechnung vom Anbieter</p>
-        ${bookable ? `<a class="btn wide" href="#/kasse/${offer.id}">Jetzt buchen</a>` : `<button class="btn wide" disabled>Gerade nicht buchbar</button>`}
+        <p class="meta" style="color:var(--muted);margin:4px 0 6px">${isGroupOffer(offer) ? "pro Person, " : ""}inkl. aller Kosten, Rechnung vom Anbieter</p>
+        <p class="meta" style="color:var(--muted);margin:0 0 18px">${escapeHtml(offer.location)} · ${offer.durationMin} Minuten</p>
+        <h3>Termin wählen</h3>
+        ${upcomingDates(offer).length ? `<div class="slots">${upcomingDates(offer).map(d => bookable && freeSeats(offer, d) > 0
+          ? `<a class="slot" href="#/kasse/${offer.id}/${d.id}"><b>${formatSlot(d)}</b><span>${seatsLabel(offer, d)}</span></a>`
+          : `<div class="slot off"><b>${formatSlot(d)}</b><span>${!sellerReady(offer) ? "nicht buchbar" : isGroupOffer(offer) ? "ausgebucht" : "vergeben"}</span></div>`).join("")}</div>`
+          : `<p class="note">Gerade sind keine Termine eingetragen.</p>`}
         <div class="seller" style="margin-top:20px">${avatar(member)}<div>Angeboten von <a href="#/mitglied/${member.id}"><b>${escapeHtml(member.name)}</b></a><div class="meta">${escapeHtml(member.city)}</div></div></div>
         <p class="note" style="margin-top:18px">Du buchst direkt bei ${escapeHtml(member.name)}. Family Travel Business vermittelt das Angebot.</p>
       </div>
@@ -400,10 +483,11 @@ function pageOffer(id) {
 let paymentMethod = "Karte";
 let paymentInProgress = false;
 
-function pageCheckout(id) {
+function pageCheckout(id, dateId) {
   const offer = offerById(id);
-  if (!offer || !isBookable(offer)) return pageNotFound();
+  if (!isDateBookable(offer, dateId)) return `<div class="panel empty" style="margin-top:40px">Dieser Termin ist nicht mehr frei. <a href="#/angebot/${offer ? offer.id : ""}" style="color:var(--blue)">Anderen Termin wählen</a></div>`;
   const member = memberById(offer.memberId);
+  const date = dateById(offer, dateId);
   const methods = ["Karte", "Apple Pay", "SEPA", "Klarna"];
   const cardFields = `<label for="card">Kartennummer</label><input id="card" inputmode="numeric" autocomplete="off" value="4242 4242 4242 4242">
       <div class="split"><div><label for="exp">Gültig bis</label><input id="exp" value="12 / 29"></div><div><label for="cvc">Prüfnummer</label><input id="cvc" value="123"></div></div>
@@ -413,7 +497,7 @@ function pageCheckout(id) {
     "SEPA": `<label for="iban">IBAN</label><input id="iban" value="DE89 3704 0044 0532 0130 00"><p class="note" style="margin-top:12px">Lastschrift: Geld kommt nach 3–5 Werktagen an.</p>`,
     "Klarna": `<p class="note">Kunde wird zu Klarna weitergeleitet und kann später oder in Raten zahlen.</p>`
   };
-  return `<a class="back" href="#/angebot/${offer.id}">← Zurück zum Angebot</a>
+  return `<a class="back" href="#/angebot/${offer.id}">← Anderen Termin wählen</a>
     <div class="two">
       <form class="panel" id="checkout" novalidate>
         <h2>Bezahlen</h2>
@@ -432,7 +516,12 @@ function pageCheckout(id) {
       <div class="panel">
         <h3>${escapeHtml(offer.title)}</h3>
         <div class="seller" style="margin:12px 0 18px">${avatar(member)}<div>Verkäufer: <b>${escapeHtml(member.name)}</b><div class="meta">vermittelt über Family Travel Business</div></div></div>
-        <div class="lines"><div class="total"><span>Gesamt</span><span>${euro(offer.priceCents)}</span></div></div>
+        <div class="lines">
+          <div><span>Termin</span><span>${formatSlot(date)}</span></div>
+          <div><span>Ort</span><span>${escapeHtml(offer.location)}</span></div>
+          <div><span>Dauer</span><span>${offer.durationMin} Minuten</span></div>
+          <div class="total"><span>Gesamt</span><span>${euro(offer.priceCents)}</span></div>
+        </div>
       </div>
     </div>`;
 }
@@ -444,11 +533,18 @@ function pageDone(id) {
   const member = offer && memberById(offer.memberId);
   if (!member) return pageNotFound();
   const split = splitPayment(order.grossCents, order.commissionPercent);
+  const date = dateById(offer, order.dateId);
+  const online = /online/i.test(offer.location);
   return `<div class="panel center" style="max-width:640px;margin:40px auto 24px">
       <div class="ok-circle"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
       <h1 style="font-size:32px">Danke, ${escapeHtml(order.buyer)}!</h1>
       <span class="badge amber" style="margin-bottom:12px">Testbuchung</span>
-      <p class="lead" style="margin:0 auto">Deine Buchung „${escapeHtml(offer.title)}“ ist bestätigt. ${escapeHtml(member.name)} meldet sich bei dir und schickt dir die Rechnung.</p>
+      <p class="lead" style="margin:0 auto">Deine Buchung „${escapeHtml(offer.title)}“ ist bestätigt. Die Rechnung kommt von ${escapeHtml(member.name)}.</p>
+      <div class="lines" style="max-width:420px;margin:18px auto 0;text-align:left">
+        <div><span>Termin</span><span>${date ? formatSlot(date) : ""}</span></div>
+        <div><span>Ort</span><span>${escapeHtml(offer.location)}</span></div>
+      </div>
+      <p class="note" style="margin-top:14px">${online ? `Den Zoom-Link schickt dir ${escapeHtml(member.name)} rechtzeitig vor dem Termin per E-Mail.` : "Die Adresse und alle Infos bekommst du zusätzlich per E-Mail."}</p>
     </div>
     <div class="panel" style="max-width:640px;margin:0 auto">
       <span class="badge amber">Nur in der Vorschau sichtbar</span>
@@ -466,7 +562,7 @@ function pageDone(id) {
 /* ---------- Mitgliederbereich ---------- */
 
 function memberTabs(member, tab) {
-  const tabs = [["", "Übersicht"], ["angebote", "Meine Angebote"], ["verkaeufe", "Verkäufe"], ["profil", "Profil"]];
+  const tabs = [["", "Übersicht"], ["angebote", "Meine Angebote"], ["verkaeufe", "Buchungen"], ["profil", "Profil"]];
   return `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-top:28px">
       <div class="seller">${avatar(member)}<div><b style="font-size:18px">${escapeHtml(member.name)}</b><div class="meta">${escapeHtml(member.topic)}</div></div></div>
       <label style="margin:0;font-weight:400;font-size:14px;color:var(--muted)">Testweise anmelden als
@@ -501,7 +597,7 @@ function memberOverview(member) {
       ${steps.map(s => `<div class="list-item"><div class="grow"><b>${s.title}</b><div class="meta" style="color:var(--muted)">${s.text}</div></div>${s.done ? `<span class="badge green">erledigt</span>` : s.action}</div>`).join("")}
       ${waitsForApproval ? `<p class="note" style="margin-top:14px">Vorführung: Wechsle jetzt in die <a href="#/admin/mitglieder" style="color:var(--blue)">Verwaltung</a> und gib ${escapeHtml(member.name)} frei. Im echten Betrieb macht das Dirk.</p>` : ""}</div>`}
     <div class="kpis">
-      <div class="kpi"><span>Verkäufe</span><b>${sales.length}</b></div>
+      <div class="kpi"><span>Buchungen</span><b>${sales.length}</b></div>
       <div class="kpi"><span>Ausgezahlt an dich</span><b>${euro(payoutTotal)}</b></div>
       <div class="kpi"><span>Status</span><b style="font-size:20px;margin-top:10px">${ready ? `<span class="badge green">Verkauf aktiv</span>` : `<span class="badge amber">noch nicht aktiv</span>`}</b></div>
     </div>
@@ -512,16 +608,16 @@ function memberOffers(member) {
   const offers = state.offers.filter(o => o.memberId === member.id && !o.archived);
   return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0">Meine Angebote</h2><button class="btn" data-action="new-offer">Neues Angebot</button></div>
     <div class="panel">${offers.length ? offers.map(o => `<div class="list-item">
-        <div class="grow"><b>${escapeHtml(o.title)}</b><div class="meta" style="color:var(--muted)">${escapeHtml(o.type)} · ${euro(o.priceCents)}</div></div>
-        <div class="actions"><button class="btn ghost small" data-action="edit-offer" data-id="${o.id}">Bearbeiten</button><button class="btn danger small" data-action="delete-offer" data-id="${o.id}" aria-label="Löschen">Löschen</button></div>
-      </div>`).join("") : `<div class="empty">Leg dein erstes Angebot an – Reise, Kurs oder Coaching.</div>`}</div>`;
+        <div class="grow"><b>${escapeHtml(o.title)}</b><div class="meta" style="color:var(--muted)">${escapeHtml(o.type)} · ${euro(o.priceCents)} · ${bookableDates(o).length} freie Termine</div></div>
+        <div class="actions"><button class="btn small" data-action="dates" data-id="${o.id}">Termine</button><button class="btn ghost small" data-action="edit-offer" data-id="${o.id}">Bearbeiten</button><button class="btn danger small" data-action="delete-offer" data-id="${o.id}" aria-label="Löschen">Löschen</button></div>
+      </div>`).join("") : `<div class="empty">Leg dein erstes Angebot an – Coaching, Training oder Workshop.</div>`}</div>`;
 }
 
 function memberSalesView(member) {
   const sales = memberSales(member.id);
-  if (!sales.length) return `<div class="panel empty">Noch keine Verkäufe. Sobald jemand bucht, siehst du es hier.</div>`;
-  return `<div class="panel tablewrap"><table><thead><tr><th>Datum</th><th>Angebot</th><th>Kunde</th><th>Betrag</th><th>Provision</th><th>Stripe</th><th>An dich</th></tr></thead><tbody>
-    ${sales.map(o => { const s = splitPayment(o.grossCents, o.commissionPercent); return `<tr><td>${formatDate(o.date)}</td><td>${escapeHtml(offerById(o.offerId).title)}</td><td>${escapeHtml(o.buyer)}</td><td>${euro(o.grossCents)}</td><td>−${euro(s.commissionCents)}</td><td>−${euro(s.stripeFeeCents)}</td><td><b>${euro(s.payoutCents)}</b></td></tr>`; }).join("")}
+  if (!sales.length) return `<div class="panel empty">Noch keine Buchungen. Sobald jemand bucht, siehst du es hier.</div>`;
+  return `<div class="panel tablewrap"><table><thead><tr><th>Termin</th><th>Angebot</th><th>Kunde</th><th>Betrag</th><th>Provision</th><th>Stripe</th><th>An dich</th></tr></thead><tbody>
+    ${sales.map(o => { const s = splitPayment(o.grossCents, o.commissionPercent); const offer = offerById(o.offerId); const d = dateById(offer, o.dateId); return `<tr><td>${d ? formatSlot(d) : ""}</td><td>${escapeHtml(offer.title)}</td><td>${escapeHtml(o.buyer)}</td><td>${euro(o.grossCents)}</td><td>−${euro(s.commissionCents)}</td><td>−${euro(s.stripeFeeCents)}</td><td><b>${euro(s.payoutCents)}</b></td></tr>`; }).join("")}
     </tbody></table></div>`;
 }
 
@@ -557,9 +653,9 @@ function adminOverview() {
       <div class="kpi"><span>Einrichtungsgebühren</span><b>${euro(setup)}</b></div>
       <div class="kpi"><span>Einnahmen gesamt</span><b>${euro(commission + setup)}</b></div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Vermittelte Verkäufe</h2><button class="btn ghost" data-action="export">Export für Steuer-Meldung (CSV)</button></div>
-    <div class="panel tablewrap"><table><thead><tr><th>Datum</th><th>Mitglied</th><th>Angebot</th><th>Betrag</th><th>Provision</th></tr></thead><tbody>
-    ${rows.map(o => { const offer = offerById(o.offerId); const m = memberById(offer.memberId); return `<tr><td>${formatDate(o.date)}</td><td>${escapeHtml(m.name)}</td><td>${escapeHtml(offer.title)}</td><td>${euro(o.grossCents)}</td><td><b>${euro(splitPayment(o.grossCents, o.commissionPercent).commissionCents)}</b></td></tr>`; }).join("")}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Vermittelte Buchungen</h2><button class="btn ghost" data-action="export">Export für Steuer-Meldung (CSV)</button></div>
+    <div class="panel tablewrap"><table><thead><tr><th>Gebucht am</th><th>Mitglied</th><th>Angebot</th><th>Termin</th><th>Betrag</th><th>Provision</th></tr></thead><tbody>
+    ${rows.map(o => { const offer = offerById(o.offerId); const m = memberById(offer.memberId); return `<tr><td>${formatDate(o.date)}</td><td>${escapeHtml(m.name)}</td><td>${escapeHtml(offer.title)}</td><td>${dateById(offer, o.dateId) ? formatSlot(dateById(offer, o.dateId)) : ""}</td><td>${euro(o.grossCents)}</td><td><b>${euro(splitPayment(o.grossCents, o.commissionPercent).commissionCents)}</b></td></tr>`; }).join("")}
     </tbody></table></div>`;
 }
 
@@ -796,28 +892,104 @@ function closeModal() {
   document.getElementById("modal")?.remove();
 }
 
+const OFFER_LIMITS = { title: 80, location: 80, desc: 600 };
+
+function saveOffer(offerId, fields) {
+  const title = fields.title.trim().slice(0, OFFER_LIMITS.title);
+  const location = fields.location.trim().slice(0, OFFER_LIMITS.location);
+  const priceCents = Math.round(parseFloat(fields.price) * 100);
+  const durationMin = parseInt(fields.duration, 10);
+  if (!title || !location) return { error: "Bitte Titel und Ort eingeben." };
+  if (!OFFER_TYPES.includes(fields.type)) return { error: "Bitte eine Art auswählen." };
+  if (!(priceCents >= 100 && priceCents <= 5000000)) return { error: "Preis zwischen 1 € und 50.000 € eingeben." };
+  if (!(durationMin >= 15 && durationMin <= 1440)) return { error: "Dauer zwischen 15 und 1.440 Minuten eingeben." };
+  const values = { title, type: fields.type, priceCents, durationMin, location, desc: fields.desc.trim().slice(0, OFFER_LIMITS.desc) };
+  if (offerId) {
+    const offer = offerById(offerId);
+    if (!offer || offer.memberId !== currentMember().id) return { error: "Angebot nicht gefunden." };
+    Object.assign(offer, values);
+    saveState();
+    return { offer };
+  }
+  const offer = { id: newId("o"), memberId: currentMember().id, dates: [], ...values };
+  state.offers.push(offer);
+  saveState();
+  return { offer };
+}
+
 function openOfferDialog(offerId) {
-  const offer = offerId ? offerById(offerId) : { title: "", type: "Kurs", priceCents: 0, desc: "" };
+  const offer = offerId ? offerById(offerId) : { title: "", type: SINGLE_SEAT_TYPE, priceCents: 0, durationMin: 60, location: "Online per Zoom", desc: "" };
   openModal(`<h2>${offerId ? "Angebot bearbeiten" : "Neues Angebot"}</h2>
     <form id="offer-form" novalidate>
-      <label for="f-title">Titel</label><input id="f-title" maxlength="80" value="${escapeHtml(offer.title)}">
-      <label for="f-type">Art</label><select id="f-type">${["Reise", "Kurs", "Coaching", "Produkt"].map(t => `<option${t === offer.type ? " selected" : ""}>${t}</option>`).join("")}</select>
-      <label for="f-price">Preis (€)</label><input id="f-price" type="number" min="1" max="50000" step="0.01" value="${offer.priceCents ? offer.priceCents / 100 : ""}">
-      <label for="f-desc">Beschreibung</label><textarea id="f-desc" rows="3" maxlength="600">${escapeHtml(offer.desc)}</textarea>
+      <label for="f-title">Titel</label><input id="f-title" maxlength="${OFFER_LIMITS.title}" value="${escapeHtml(offer.title)}">
+      <label for="f-type">Art</label><select id="f-type">${OFFER_TYPES.map(t => `<option${t === offer.type ? " selected" : ""}>${t}</option>`).join("")}</select>
+      <div class="split"><div><label for="f-price">Preis (€)</label><input id="f-price" type="number" min="1" max="50000" step="0.01" value="${offer.priceCents ? offer.priceCents / 100 : ""}"></div>
+        <div><label for="f-duration">Dauer (Minuten)</label><input id="f-duration" type="number" min="15" max="1440" step="5" value="${offer.durationMin}"></div></div>
+      <label for="f-location">Ort</label><input id="f-location" maxlength="${OFFER_LIMITS.location}" value="${escapeHtml(offer.location)}">
+      <label for="f-desc">Beschreibung</label><textarea id="f-desc" rows="3" maxlength="${OFFER_LIMITS.desc}">${escapeHtml(offer.desc)}</textarea>
       <div class="err" id="err"></div>
-      <div class="actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn ghost" data-close>Abbrechen</button><button class="btn" type="submit">Speichern</button></div>
+      <div class="actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn ghost" data-close>Abbrechen</button><button class="btn" type="submit">${offerId ? "Speichern" : "Weiter zu den Terminen"}</button></div>
     </form>`, bg => {
     bg.querySelector("#offer-form").addEventListener("submit", e => {
       e.preventDefault();
-      const title = bg.querySelector("#f-title").value.trim();
-      const priceCents = Math.round(parseFloat(bg.querySelector("#f-price").value) * 100);
-      const error = !title ? "Bitte einen Titel eingeben." : !(priceCents >= 100 && priceCents <= 5000000) ? "Preis zwischen 1 € und 50.000 € eingeben." : "";
-      if (error) { bg.querySelector("#err").textContent = error; return; }
-      const values = { title, type: bg.querySelector("#f-type").value, priceCents, desc: bg.querySelector("#f-desc").value.trim() };
-      if (offerId) Object.assign(offerById(offerId), values);
-      else state.offers.push({ id: newId("o"), memberId: currentMember().id, ...values });
-      saveState(); closeModal(); render(); toast("Angebot gespeichert");
+      const value = id => bg.querySelector(id).value;
+      const result = saveOffer(offerId, { title: value("#f-title"), type: value("#f-type"), price: value("#f-price"), duration: value("#f-duration"), location: value("#f-location"), desc: value("#f-desc") });
+      if (result.error) { bg.querySelector("#err").textContent = result.error; return; }
+      closeModal(); render(); toast("Angebot gespeichert");
+      if (!offerId) openDatesDialog(result.offer.id);
     });
+  });
+}
+
+function addOfferDate(offerId, fields) {
+  const offer = offerById(offerId);
+  if (!offer || offer.memberId !== currentMember().id) return { error: "Angebot nicht gefunden." };
+  const seats = isGroupOffer(offer) ? parseInt(fields.seats, 10) : 1;
+  if (!DATE_PATTERN.test(fields.date) || fields.date <= todayIso()) return { error: "Bitte ein Datum ab morgen wählen." };
+  if (!TIME_PATTERN.test(fields.time)) return { error: "Bitte eine Uhrzeit wählen." };
+  if (!(seats >= 1 && seats <= MAX_SEATS)) return { error: `Plätze zwischen 1 und ${MAX_SEATS} eingeben.` };
+  if (offer.dates.some(d => d.date === fields.date && d.time === fields.time)) return { error: "Diesen Termin gibt es schon." };
+  const date = { id: newId("d"), date: fields.date, time: fields.time, seats };
+  offer.dates.push(date);
+  saveState();
+  return { date };
+}
+
+// Termine mit Buchungen bleiben stehen, damit keine Buchung ins Leere zeigt.
+function removeOfferDate(offerId, dateId) {
+  const offer = offerById(offerId);
+  if (!offer || offer.memberId !== currentMember().id || !dateById(offer, dateId) || bookedSeats(offer, dateId) > 0) return false;
+  offer.dates = offer.dates.filter(d => d.id !== dateId);
+  saveState();
+  return true;
+}
+
+function openDatesDialog(offerId) {
+  const offer = offerById(offerId);
+  if (!offer) return;
+  const group = isGroupOffer(offer);
+  const list = upcomingDates(offer).map(d => `<div class="list-item">
+      <div class="grow"><b>${formatSlot(d)}</b><div class="meta" style="color:var(--muted)">${group ? `${bookedSeats(offer, d.id)} von ${d.seats} Plätzen gebucht` : bookedSeats(offer, d.id) ? "gebucht" : "frei"}</div></div>
+      ${bookedSeats(offer, d.id) ? `<span class="badge green">hat Buchungen</span>` : `<button class="btn danger small" data-remove-date="${d.id}">Löschen</button>`}
+    </div>`).join("");
+  openModal(`<h2>Termine: ${escapeHtml(offer.title)}</h2>
+    <div>${list || `<p class="note">Noch keine Termine. Leg den ersten an, dann ist das Angebot buchbar.</p>`}</div>
+    <form id="date-form" novalidate style="margin-top:12px">
+      <div class="split"><div><label for="t-date">Datum</label><input id="t-date" type="date" min="${dayFromToday(1)}" value="${dayFromToday(7)}"></div>
+        <div><label for="t-time">Uhrzeit</label><input id="t-time" type="time" value="10:00"></div></div>
+      ${group ? `<label for="t-seats">Plätze</label><input id="t-seats" type="number" min="1" max="${MAX_SEATS}" value="12">` : ""}
+      <div class="err" id="err"></div>
+      <div class="actions" style="justify-content:flex-end;margin-top:8px"><button type="button" class="btn ghost" data-close>Fertig</button><button class="btn" type="submit">Termin hinzufügen</button></div>
+    </form>`, bg => {
+    bg.querySelector("#date-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const result = addOfferDate(offerId, { date: bg.querySelector("#t-date").value, time: bg.querySelector("#t-time").value, seats: bg.querySelector("#t-seats")?.value ?? "1" });
+      if (result.error) { bg.querySelector("#err").textContent = result.error; return; }
+      render(); openDatesDialog(offerId); toast("Termin hinzugefügt");
+    });
+    bg.querySelectorAll("[data-remove-date]").forEach(button => button.addEventListener("click", () => {
+      if (removeOfferDate(offerId, button.dataset.removeDate)) { render(); openDatesDialog(offerId); toast("Termin gelöscht"); }
+    }));
   });
 }
 
@@ -1020,7 +1192,8 @@ function exportCsv() {
 
 /* ---------- Ereignisse ---------- */
 
-function handleCheckout(form, offer) {
+function handleCheckout(form, offer, dateId) {
+  if (!isDateBookable(offer, dateId)) { form.querySelector("#err").textContent = "Dieser Termin ist nicht mehr frei."; return; }
   const buyer = form.querySelector("#buyer").value.trim();
   const email = form.querySelector("#email").value.trim();
   const card = form.querySelector("#card")?.value.replace(/\s/g, "") ?? "";
@@ -1042,14 +1215,14 @@ function handleCheckout(form, offer) {
       errEl.textContent = "Die Karte wurde abgelehnt. Bitte eine andere Zahlungsart wählen.";
       return;
     }
-    if (!isBookable(offerById(offer.id))) {
+    if (!isDateBookable(offerById(offer.id), dateId)) {
       paymentInProgress = false;
       payButton.disabled = false;
       payButton.textContent = `${euro(offer.priceCents)} bezahlen`;
-      errEl.textContent = "Dieses Angebot ist gerade nicht mehr buchbar.";
+      errEl.textContent = "Dieser Termin ist gerade vergeben worden. Bitte einen anderen wählen.";
       return;
     }
-    const order = { id: newId("b"), offerId: offer.id, buyer, email, grossCents: offer.priceCents, commissionPercent: state.commissionPercent, date: new Date().toISOString().slice(0, 10) };
+    const order = { id: newId("b"), offerId: offer.id, dateId, buyer, email, grossCents: offer.priceCents, commissionPercent: state.commissionPercent, date: new Date().toISOString().slice(0, 10) };
     paymentInProgress = false;
     state.orders.push(order);
     saveState();
@@ -1079,6 +1252,7 @@ const ACTIONS = {
   "new-offer": () => openOfferDialog(null),
   "edit-offer": id => openOfferDialog(id),
   "delete-offer": id => confirmDelete(id),
+  "dates": id => openDatesDialog(id),
   "onboard": () => startVerification(),
   "sample": key => { const v = activeVerification(); if (v && Object.hasOwn(SAMPLE_FIELDS, key)) { v[SAMPLE_FIELDS[key]] = true; render(); } },
   "kind": kind => { const v = activeVerification(); if (v && SELLER_KINDS.includes(kind)) { v.kind = kind; render(); } },
@@ -1108,8 +1282,8 @@ document.getElementById("app").addEventListener("change", e => {
 
 document.getElementById("app").addEventListener("submit", e => {
   e.preventDefault();
-  const [, , id] = location.hash.split("/");
-  if (e.target.id === "checkout") handleCheckout(e.target, offerById(id));
+  const [, , id, dateId] = location.hash.split("/");
+  if (e.target.id === "checkout" && !paymentInProgress) handleCheckout(e.target, offerById(id), dateId);
   if (e.target.id === "profile-form") saveProfile(e.target);
   if (e.target.id === "settings-form") saveSettings(e.target);
   if (e.target.id === "verify-form" && activeVerification()) submitVerificationStep(e.target);
@@ -1124,12 +1298,12 @@ document.getElementById("reset").addEventListener("click", () => {
 /* ---------- Router ---------- */
 
 function render() {
-  const [, section = "", param = ""] = (location.hash || "#/").split("/");
+  const [, section = "", param = "", param2 = ""] = (location.hash || "#/").split("/");
   const routes = {
     "": () => pageHome(),
     mitglied: () => pageMember(param),
     angebot: () => pageOffer(param),
-    kasse: () => pageCheckout(param),
+    kasse: () => pageCheckout(param, param2),
     fertig: () => pageDone(param),
     bereich: () => pageMemberArea(param),
     admin: () => pageAdmin(param),
