@@ -32,6 +32,7 @@ Ziel: Dirk Adams zeigen, wie das Vermittlermodell mit Stripe Connect (Direct Cha
 
 - Doppelbuchung bei Wegnavigieren während der Zahlung, Preisänderung während der Zahlung
 - Gemeinsamer Origin `klassenmedia.github.io` (eigene Subdomain erst für den echten Bau)
+- Review 02.11.: setupPaid-Prüfung im Timeout und Submit-Absicherung ohne eigenen Test; „Testdaten zurücksetzen“ verwirft laufende Verifizierung nicht (`verification = null` im Reset ergänzen)
 
 ## Offen vor dem echten Bau
 
