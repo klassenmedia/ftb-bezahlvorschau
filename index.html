@@ -139,7 +139,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;font-size:13px;color:var(
 <script>
 "use strict";
 
-const STORAGE_KEY = "ftb-vorschau-v1";
+const STORAGE_NAME = "ftb-vorschau-v1";
 const CATEGORIES = ["Gesundheit", "Persönlichkeit", "Kreativität", "Wissen & Beruf"];
 const STRIPE_PERCENT = 1.5;
 const STRIPE_FIXED_CENTS = 25;
@@ -195,7 +195,7 @@ let state = loadState();
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_NAME);
     if (raw) return JSON.parse(raw);
   } catch (error) {
     console.warn("Gespeicherte Testdaten nicht lesbar, starte neu.", error);
@@ -205,7 +205,7 @@ function loadState() {
 
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_NAME, JSON.stringify(state));
   } catch (error) {
     console.warn("Testdaten konnten nicht gespeichert werden.", error);
   }
