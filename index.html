@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-vVUT/Pm20RwPz4nNaIsyuCasGMHaH8n4ulqnpQLvPd8='; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
 :root{
@@ -16,9 +18,10 @@ body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;c
 a{color:inherit;text-decoration:none}
 button,input,select,textarea{font:inherit;color:inherit}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
-.demo{background:var(--ink);color:#fff;font-size:13px;text-align:center;padding:7px 16px}
+.demo{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;font-size:13px;text-align:center;padding:7px 16px}
 .demo button{background:none;border:0;color:var(--sky);text-decoration:underline;cursor:pointer;padding:0 0 0 8px}
-header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.testmode{margin-top:10px;text-align:center;font-size:13px;font-weight:600;color:var(--amber);background:var(--amber-soft);border-radius:10px;padding:8px}
 header .wrap{display:flex;align-items:center;gap:24px;height:68px}
 header img{height:34px;display:block}
 nav{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
@@ -144,6 +147,7 @@ const CATEGORIES = ["Gesundheit", "Persönlichkeit", "Kreativität", "Wissen & B
 const STRIPE_PERCENT = 1.5;
 const STRIPE_FIXED_CENTS = 25;
 const DECLINED_TEST_CARD = "4000000000000002";
+const SUCCESS_TEST_CARD = "4242424242424242";
 const PROCESSING_DELAY_MS = 1400;
 
 const GRADIENTS = [
@@ -196,11 +200,37 @@ let state = loadState();
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_NAME);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (isValidState(parsed)) return parsed;
+      console.warn("Gespeicherte Testdaten ungültig, starte neu.");
+    }
   } catch (error) {
     console.warn("Gespeicherte Testdaten nicht lesbar, starte neu.", error);
   }
   return seedData();
+}
+
+const SAFE_ID = /^[a-z0-9]{1,40}$/;
+const isSafeId = value => typeof value === "string" && SAFE_ID.test(value);
+const isCents = value => Number.isInteger(value) && value >= 0 && value <= 100000000;
+const isPercent = value => Number.isFinite(value) && value >= 0 && value <= 50;
+const isText = value => typeof value === "string" && value.length <= 600;
+
+function isValidState(data) {
+  if (!data || typeof data !== "object") return false;
+  const { members, offers, orders, setupFees } = data;
+  if (![members, offers, orders, setupFees].every(Array.isArray)) return false;
+  if (!isPercent(data.commissionPercent) || !isCents(data.setupFeeCents) || !isSafeId(data.currentMemberId)) return false;
+  const memberIds = new Set(members.map(m => m && m.id));
+  const offerIds = new Set(offers.map(o => o && o.id));
+  return members.every(m => m && isSafeId(m.id) && [m.name, m.topic, m.category, m.city, m.bio, m.status].every(isText)
+      && Number.isInteger(m.color) && m.color >= 0 && typeof m.payouts === "boolean" && typeof m.setupPaid === "boolean")
+    && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.type, o.desc].every(isText) && isCents(o.priceCents))
+    && orders.every(o => o && isSafeId(o.id) && offerIds.has(o.offerId) && isText(o.buyer) && isCents(o.grossCents)
+      && isPercent(o.commissionPercent) && /^\d{4}-\d{2}-\d{2}$/.test(o.date))
+    && setupFees.every(f => f && memberIds.has(f.memberId) && isCents(f.cents) && /^\d{4}-\d{2}-\d{2}$/.test(f.date))
+    && memberIds.has(data.currentMemberId);
 }
 
 function saveState() {
@@ -230,6 +260,7 @@ function splitPayment(grossCents, commissionPercent) {
 }
 
 const memberById = id => state.members.find(m => m.id === id);
+const currentMember = () => memberById(state.currentMemberId) || state.members[0];
 const offerById = id => state.offers.find(o => o.id === id);
 const initials = name => name.split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase();
 const avatar = (member, big) => `<div class="avatar${big ? " big" : ""}" style="background:${GRADIENTS[member.color % GRADIENTS.length]}">${escapeHtml(initials(member.name))}</div>`;
@@ -286,6 +317,7 @@ function pageOffer(id) {
   const offer = offerById(id);
   if (!offer) return pageNotFound();
   const member = memberById(offer.memberId);
+  if (!member) return pageNotFound();
   const bookable = isBookable(offer);
   return `<a class="back" href="#/mitglied/${member.id}">← ${escapeHtml(member.name)}</a>
     <div class="two">
@@ -324,8 +356,8 @@ function pageCheckout(id) {
     <div class="two">
       <form class="panel" id="checkout" novalidate>
         <h2>Bezahlen</h2>
-        <label for="buyer">Name</label><input id="buyer" autocomplete="name" maxlength="80" required>
-        <label for="email">E-Mail</label><input id="email" type="email" autocomplete="email" maxlength="120" required>
+        <label for="buyer">Name</label><input id="buyer" autocomplete="off" maxlength="80" value="Max Testkunde" required>
+        <label for="email">E-Mail</label><input id="email" type="email" autocomplete="off" maxlength="120" value="test@example.com" required>
         <label>Zahlungsart</label>
         <div class="stripe">
           <div class="tabs">${methods.map(m => `<button type="button" class="tab${m === paymentMethod ? " on" : ""}" data-method="${m}">${m}</button>`).join("")}</div>
@@ -333,7 +365,8 @@ function pageCheckout(id) {
         </div>
         <div class="err" id="err"></div>
         <button class="btn wide" id="pay" type="submit">${euro(offer.priceCents)} bezahlen</button>
-        <div class="powered">Sichere Zahlung über Stripe · Verkäufer: ${escapeHtml(member.name)}</div>
+        <div class="testmode">Testmodus – es wird nichts abgebucht</div>
+        <div class="powered">Zahlung über Stripe · Verkäufer: ${escapeHtml(member.name)}</div>
       </form>
       <div class="panel">
         <h3>${escapeHtml(offer.title)}</h3>
@@ -347,11 +380,13 @@ function pageDone(id) {
   const order = state.orders.find(o => o.id === id);
   if (!order) return pageNotFound();
   const offer = offerById(order.offerId);
-  const member = memberById(offer.memberId);
+  const member = offer && memberById(offer.memberId);
+  if (!member) return pageNotFound();
   const split = splitPayment(order.grossCents, order.commissionPercent);
   return `<div class="panel center" style="max-width:640px;margin:40px auto 24px">
       <div class="ok-circle"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
       <h1 style="font-size:32px">Danke, ${escapeHtml(order.buyer)}!</h1>
+      <span class="badge amber" style="margin-bottom:12px">Testbuchung</span>
       <p class="lead" style="margin:0 auto">Deine Buchung „${escapeHtml(offer.title)}“ ist bestätigt. ${escapeHtml(member.name)} meldet sich bei dir und schickt dir die Rechnung.</p>
     </div>
     <div class="panel" style="max-width:640px;margin:0 auto">
@@ -384,9 +419,9 @@ function memberSales(memberId) {
 }
 
 function pageMemberArea(tab) {
-  const member = memberById(state.currentMemberId) || state.members[0];
+  const member = currentMember();
   const views = { "": memberOverview, angebote: memberOffers, verkaeufe: memberSalesView, profil: memberProfile };
-  return memberTabs(member, tab) + (views[tab] || memberOverview)(member);
+  return memberTabs(member, tab) + (Object.hasOwn(views, tab) ? views[tab] : memberOverview)(member);
 }
 
 function memberOverview(member) {
@@ -443,7 +478,7 @@ function pageAdmin(tab) {
   const views = { "": adminOverview, mitglieder: adminMembers, einstellungen: adminSettings };
   return `<h1 style="margin-top:32px;font-size:34px">Verwaltung</h1>
     <div class="tabsbar">${tabs.map(([key, label]) => `<a href="#/admin${key ? "/" + key : ""}" class="${tab === key ? "on" : ""}">${label}</a>`).join("")}</div>
-    ${(views[tab] || adminOverview)()}`;
+    ${(Object.hasOwn(views, tab) ? views[tab] : adminOverview)()}`;
 }
 
 function adminOverview() {
@@ -472,7 +507,7 @@ function adminMembers() {
       <td>${m.setupPaid ? `<span class="badge green">bezahlt</span>` : `<span class="badge amber">offen</span>`}</td>
       <td>${m.payouts ? `<span class="badge green">ja</span>` : `<span class="badge amber">nein</span>`}</td>
       <td>${statusBadge(m)}</td>
-      <td class="actions">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>`}</td>
+      <td class="actions">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : m.setupPaid && m.payouts ? `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>` : `<span class="meta" style="color:var(--muted)">wartet auf Mitglied</span>`}</td>
     </tr>`).join("")}
     </tbody></table></div>
     <p class="note" style="margin-top:16px">Gesperrte Mitglieder bleiben mit ihren Verkäufen erhalten, ihre Angebote sind aber nicht mehr buchbar.</p>`;
@@ -528,7 +563,7 @@ function openOfferDialog(offerId) {
       if (error) { bg.querySelector("#err").textContent = error; return; }
       const values = { title, type: bg.querySelector("#f-type").value, priceCents, desc: bg.querySelector("#f-desc").value.trim() };
       if (offerId) Object.assign(offerById(offerId), values);
-      else state.offers.push({ id: newId("o"), memberId: state.currentMemberId, ...values });
+      else state.offers.push({ id: newId("o"), memberId: currentMember().id, ...values });
       saveState(); closeModal(); render(); toast("Angebot gespeichert");
     });
   });
@@ -549,7 +584,7 @@ function confirmDelete(offerId) {
 }
 
 function openOnboarding() {
-  const member = memberById(state.currentMemberId);
+  const member = currentMember();
   let step = 0;
   const views = [
     () => `<h2>Deine Angaben</h2>
@@ -582,7 +617,7 @@ function openOnboarding() {
 }
 
 function paySetupFee() {
-  const member = memberById(state.currentMemberId);
+  const member = currentMember();
   openModal(`<h2>Einrichtungsgebühr</h2>
     <div class="lines"><div><span>Profil im Netzwerk (einmalig)</span><span>${euro(state.setupFeeCents)}</span></div><div class="total"><span>Gesamt</span><span>${euro(state.setupFeeCents)}</span></div></div>
     <div class="stripe" style="margin-top:16px"><label style="margin-top:0">Kartennummer</label><input value="4242 4242 4242 4242"></div>
@@ -604,7 +639,7 @@ function exportCsv() {
     const commission = sales.reduce((s, o) => s + splitPayment(o.grossCents, o.commissionPercent).commissionCents, 0);
     return [m.name, "DE", sales.length, (gross / 100).toFixed(2), (commission / 100).toFixed(2)];
   });
-  // Führende = + - @ entschärfen, damit Excel keine Formeln ausführt.
+  // Führende = + - @ Tab CR entschärfen, damit Excel keine Formeln ausführt.
   const cell = value => { let text = String(value); if (/^[=+\-@\t\r]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; };
   const csv = [header, ...rows].map(r => r.map(cell).join(";")).join("\n");
   const link = document.createElement("a");
@@ -623,7 +658,7 @@ function handleCheckout(form, offer) {
   const errEl = form.querySelector("#err");
   if (!buyer) { errEl.textContent = "Bitte deinen Namen eingeben."; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = "Bitte eine gültige E-Mail-Adresse eingeben."; return; }
-  if (paymentMethod === "Karte" && !/^\d{16}$/.test(card)) { errEl.textContent = "Bitte eine 16-stellige Kartennummer eingeben."; return; }
+  if (paymentMethod === "Karte" && card !== SUCCESS_TEST_CARD && card !== DECLINED_TEST_CARD) { errEl.textContent = "In der Vorschau gehen nur die beiden Testkarten."; return; }
   errEl.textContent = "";
   const payButton = form.querySelector("#pay");
   payButton.disabled = true;
@@ -635,6 +670,12 @@ function handleCheckout(form, offer) {
       errEl.textContent = "Die Karte wurde abgelehnt. Bitte eine andere Zahlungsart wählen.";
       return;
     }
+    if (!isBookable(offerById(offer.id))) {
+      payButton.disabled = false;
+      payButton.textContent = `${euro(offer.priceCents)} bezahlen`;
+      errEl.textContent = "Dieses Angebot ist gerade nicht mehr buchbar.";
+      return;
+    }
     const order = { id: newId("b"), offerId: offer.id, buyer, email, grossCents: offer.priceCents, commissionPercent: state.commissionPercent, date: new Date().toISOString().slice(0, 10) };
     state.orders.push(order);
     saveState();
@@ -643,7 +684,7 @@ function handleCheckout(form, offer) {
 }
 
 function saveProfile(form) {
-  const member = memberById(state.currentMemberId);
+  const member = currentMember();
   const name = form.querySelector("#p-name").value.trim();
   if (!name) { form.querySelector("#err").textContent = "Bitte einen Namen eingeben."; return; }
   Object.assign(member, { name, topic: form.querySelector("#p-topic").value.trim(), category: form.querySelector("#p-cat").value, bio: form.querySelector("#p-bio").value.trim() });
@@ -710,7 +751,7 @@ function render() {
     bereich: () => pageMemberArea(param),
     admin: () => pageAdmin(param)
   };
-  document.getElementById("app").innerHTML = (routes[section] || pageNotFound)();
+  document.getElementById("app").innerHTML = (Object.hasOwn(routes, section) ? routes[section] : pageNotFound)();
   const navKey = section === "bereich" ? "bereich" : section === "admin" ? "admin" : "entdecken";
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("on", a.dataset.nav === navKey));
 }
