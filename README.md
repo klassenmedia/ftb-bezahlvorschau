@@ -10,3 +10,5 @@ Mein Bereich (Einrichtungsgebühr, Identitätsprüfung, Angebote anlegen/bearbei
 Verwaltung (Kennzahlen, Mitglieder freigeben/sperren, Provision und Gebühr, CSV-Export für DAC7).
 
 Offen vor echtem Bau: Stripe-Konto der LLC (US-Bankkonto), Klärung Cross-Border Direct Charges mit Stripe, Steuerfragen (DAC7, Wohnsitz Dirk).
+
+Prüfen vor jedem Commit: `node tests/check.mjs`. Nach jeder Skriptänderung den CSP-Hash erneuern: `python3 scripts/update-csp.py index.html` (sonst bleibt die Seite leer).

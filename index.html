@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-qfIjcvfi59ZY4uOE2QIhwR52ySfgRSR+SVBpobhSlSU='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-6YuTQKoeoLVTFIJ01gK9zS7CNtESaovW/NF/Okh2BDI='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -200,25 +200,10 @@ function seedData() {
   };
 }
 
-let state = loadState();
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_NAME);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (isValidState(parsed)) return parsed;
-      console.warn("Gespeicherte Testdaten ungültig, starte neu.");
-    }
-  } catch (error) {
-    console.warn("Gespeicherte Testdaten nicht lesbar, starte neu.", error);
-  }
-  return seedData();
-}
-
 const SAFE_ID = /^[a-z0-9]{1,40}$/;
 const isSafeId = value => typeof value === "string" && SAFE_ID.test(value);
 const isCents = value => Number.isInteger(value) && value >= 0 && value <= 100000000;
+const isPrice = value => Number.isInteger(value) && value >= 100 && value <= 5000000;
 const isPercent = value => Number.isFinite(value) && value >= 0 && value <= 50;
 const isText = value => typeof value === "string" && value.length <= 600;
 
@@ -231,12 +216,36 @@ function isValidState(data) {
   const offerIds = new Set(offers.map(o => o && o.id));
   return members.every(m => m && isSafeId(m.id) && [m.name, m.topic, m.category, m.city, m.bio, m.status].every(isText)
       && Number.isInteger(m.color) && m.color >= 0 && typeof m.payouts === "boolean" && typeof m.setupPaid === "boolean")
-    && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.type, o.desc].every(isText) && isCents(o.priceCents))
+    && offers.every(o => o && isSafeId(o.id) && memberIds.has(o.memberId) && [o.title, o.type, o.desc].every(isText) && isPrice(o.priceCents)
+      && (o.archived === undefined || typeof o.archived === "boolean"))
     && orders.every(o => o && isSafeId(o.id) && offerIds.has(o.offerId) && isText(o.buyer) && isCents(o.grossCents)
       && isPercent(o.commissionPercent) && /^\d{4}-\d{2}-\d{2}$/.test(o.date))
     && setupFees.every(f => f && memberIds.has(f.memberId) && isCents(f.cents) && /^\d{4}-\d{2}-\d{2}$/.test(f.date))
     && memberIds.has(data.currentMemberId);
 }
+
+function loadState() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(STORAGE_NAME);
+  } catch (error) {
+    console.warn("Browser-Speicher nicht verfügbar, starte mit Testdaten.", error);
+  }
+  if (!raw) return seedData();
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    console.warn("Gespeicherte Testdaten nicht lesbar, starte neu.", error);
+    return seedData();
+  }
+  if (isValidState(parsed)) return parsed;
+  console.warn("Gespeicherte Testdaten ungültig, starte neu.");
+  return seedData();
+}
+
+let state = loadState();
 
 function saveState() {
   try {
@@ -343,6 +352,7 @@ function pageOffer(id) {
 }
 
 let paymentMethod = "Karte";
+let paymentInProgress = false;
 
 function pageCheckout(id) {
   const offer = offerById(id);
@@ -532,20 +542,21 @@ function adminSettings() {
 
 const GUIDE_STEPS = [
   ["Einrichtungsgebühr bezahlen", "Einmalig, direkt in deinem Bereich. Damit ist dein Profil im Netzwerk angelegt."],
-  ["„Verkauf freischalten“ klicken", "Es öffnet sich ein Formular unseres Zahlungspartners Stripe. Ein eigenes Konto bei Stripe musst du vorher nicht anlegen, das passiert in diesem Schritt."],
-  ["Angaben machen", "Name, Geburtsdatum, Wohnadresse, Telefonnummer. Verkaufst du über deine Firma, zusätzlich Firmenname, Adresse und Steuernummer."],
-  ["Ausweis bestätigen", "Foto von Personalausweis oder Reisepass, manchmal ein kurzes Selfie. Stripe prüft das, wir sehen deinen Ausweis nie."],
+  ["„Verkauf freischalten“ klicken", "Es öffnet sich ein Formular unseres Zahlungspartners Stripe. Dein Stripe-Konto entsteht in diesem Schritt, vorher musst du nichts anlegen."],
+  ["Angaben machen", "Name, Geburtsdatum, Wohnadresse, Telefonnummer und Steuer-ID. Verkaufst du über deine Firma, zusätzlich Firmenname, Adresse und USt-IdNr."],
+  ["Ausweis bestätigen", "Foto von Personalausweis oder Reisepass, manchmal ein kurzes Selfie. Den Ausweis prüft Stripe, wir bekommen ihn nicht zu sehen."],
   ["Konto für Auszahlungen", "IBAN des Kontos, auf das deine Einnahmen gehen sollen. Es muss auf dich oder deine Firma laufen."],
   ["Freigabe abwarten", "Wir schauen kurz drüber und schalten dein Profil frei. Ab dann kannst du verkaufen."]
 ];
 
 const GUIDE_FAQ = [
   ["Wie lange dauert das?", "Meist 5–10 Minuten. Fragt Stripe nach einem weiteren Nachweis, bekommst du eine E-Mail und lädst ihn einfach nach."],
-  ["Was kostet mich Stripe?", "Keine Grundgebühr. Stripe behält pro Zahlung eine kleine Gebühr ein, bei europäischen Karten etwa 1,5 % plus 0,25 €."],
+  ["Was kostet mich Stripe?", "Stripe behält pro Zahlung eine Gebühr ein, bei normalen EU-Karten ab 1,5 % plus 0,25 €. Andere Karten, SEPA und Klarna kosten etwas anders. Die genauen Konditionen stehen vor dem Start fest."],
   ["Wer ist mein Vertragspartner beim Verkauf?", "Du. Der Kunde kauft direkt bei dir, du stellst die Rechnung. Family Travel Business vermittelt und erhält dafür eine Provision."],
-  ["Ich bin dauerhaft auf Reisen und nirgends gemeldet. Geht das?", "Stripe braucht eine echte Wohnadresse und kann dafür einen Nachweis verlangen, etwa eine Meldebescheinigung, einen Kontoauszug oder eine Rechnung. Das schreibt das Geldwäschegesetz vor. Möglich ist es, wenn du an einem Ort gemeldet bist, auch im Ausland, oder über deine eigene Firma verkaufst. Die Firmenadresse zählt dann fürs Unternehmen, deine persönlichen Angaben brauchst du trotzdem. Eine reine Postfach-Adresse kann Stripe ablehnen. Sprich uns an, dann schauen wir gemeinsam auf deinen Fall."],
-  ["Ich wohne nicht in Deutschland. Geht das trotzdem?", "Ja, Stripe gibt es in über 40 Ländern, darunter alle EU-Länder, die Schweiz, Großbritannien und die USA. Dein Stripe-Konto läuft in dem Land, in dem du wohnst oder deine Firma sitzt."],
-  ["Wer kümmert sich um Steuern?", "Du versteuerst deine Einnahmen selbst, wie bei jedem anderen Verkauf. Plattformen müssen Verkäufe aus der EU einmal im Jahr an die Steuerbehörden melden. Deshalb fragt Stripe nach deiner Steuernummer."]
+  ["Ich bin dauerhaft auf Reisen und nirgends gemeldet. Geht das?", "Stripe braucht eine echte Wohnadresse und kann dafür einen Nachweis verlangen, etwa eine Meldebescheinigung, einen Kontoauszug oder eine Rechnung. Das schreiben die Geldwäsche-Regeln vor. Möglich ist es, wenn du an einem Ort gemeldet bist, auch im Ausland, oder über deine eigene Firma verkaufst. Die Firmenadresse zählt dann fürs Unternehmen, deine persönlichen Angaben brauchst du trotzdem. Eine reine Postfach-Adresse kann Stripe ablehnen. Sprich uns an, dann schauen wir gemeinsam auf deinen Fall."],
+  ["Ich wohne nicht in Deutschland. Geht das trotzdem?", "In den meisten Fällen ja, wenn du in einem Land wohnst, das Stripe unterstützt, etwa in der EU, der Schweiz oder Großbritannien. Dein Stripe-Konto läuft in dem Land, in dem du wohnst oder deine Firma sitzt. Wir prüfen das vorab mit dir."],
+  ["Wer kümmert sich um Steuern?", "Du versteuerst deine Einnahmen selbst, wie bei jedem anderen Verkauf. Wir als Plattform müssen die Umsätze unserer Verkäufer aus der EU einmal im Jahr ans Finanzamt melden (DAC7). Dafür brauchen wir deine Steuer-ID."],
+  ["Ich biete Reisen mit Unterkunft an. Was muss ich beachten?", "Reisen mit Unterkunft und weiteren Leistungen sind oft Pauschalreisen. Dann bist du Reiseveranstalter und brauchst eine Insolvenzabsicherung mit Sicherungsschein für deine Kunden. Lass das vor dem ersten Verkauf prüfen, wir helfen dir bei der Einordnung."]
 ];
 
 function pageGuide() {
@@ -553,7 +564,7 @@ function pageGuide() {
       <p class="lead">Einmal freischalten, dann buchen Kunden direkt bei dir. Das Geld kommt automatisch auf dein Konto.</p></section>
     <div class="two">
       <div class="panel"><h2>In 6 Schritten startklar</h2>
-        ${GUIDE_STEPS.map(([title, text], i) => `<div class="list-item" style="align-items:flex-start"><div class="avatar" style="background:var(--blue);width:36px;height:36px;font-size:15px">${i + 1}</div><div class="grow"><b>${title}</b><div style="color:var(--muted);font-size:15px">${text}</div></div></div>`).join("")}
+        ${GUIDE_STEPS.map(([title, text], i) => `<div class="list-item" style="align-items:flex-start"><div class="avatar" style="background:var(--blue);width:36px;height:36px;font-size:15px">${i + 1}</div><div class="grow"><b>${escapeHtml(title)}</b><div style="color:var(--muted);font-size:15px">${escapeHtml(text)}</div></div></div>`).join("")}
         <a class="btn" href="#/bereich" style="margin-top:18px">Zu meinem Bereich</a>
       </div>
       <div class="panel"><h2>Das brauchst du</h2>
@@ -561,13 +572,13 @@ function pageGuide() {
           <div><span>Personalausweis oder Reisepass</span><span>✓</span></div>
           <div><span>Wohnadresse (ggf. mit Nachweis)</span><span>✓</span></div>
           <div><span>IBAN auf deinen Namen oder deine Firma</span><span>✓</span></div>
-          <div><span>Steuernummer oder USt-IdNr.</span><span>✓</span></div>
+          <div><span>Steuer-ID bzw. USt-IdNr.</span><span>✓</span></div>
           <div><span>Handy für Bestätigungscode</span><span>✓</span></div>
         </div>
       </div>
     </div>
     <h2 style="margin-top:36px">Häufige Fragen</h2>
-    <div class="panel">${GUIDE_FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join("")}</div>`;
+    <div class="panel">${GUIDE_FAQ.map(([q, a]) => `<details class="faq"><summary>${escapeHtml(q)}</summary><p>${escapeHtml(a)}</p></details>`).join("")}</div>`;
 }
 
 function pageNotFound() {
@@ -693,7 +704,7 @@ function exportCsv() {
   link.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
   link.download = "vermittelte-umsaetze-2026.csv";
   link.click();
-  URL.revokeObjectURL(link.href);
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 /* ---------- Ereignisse ---------- */
@@ -702,28 +713,33 @@ function handleCheckout(form, offer) {
   const buyer = form.querySelector("#buyer").value.trim();
   const email = form.querySelector("#email").value.trim();
   const card = form.querySelector("#card")?.value.replace(/\s/g, "") ?? "";
+  const method = paymentMethod;
   const errEl = form.querySelector("#err");
   if (!buyer) { errEl.textContent = "Bitte deinen Namen eingeben."; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = "Bitte eine gültige E-Mail-Adresse eingeben."; return; }
-  if (paymentMethod === "Karte" && card !== SUCCESS_TEST_CARD && card !== DECLINED_TEST_CARD) { errEl.textContent = "In der Vorschau gehen nur die beiden Testkarten."; return; }
+  if (method === "Karte" && card !== SUCCESS_TEST_CARD && card !== DECLINED_TEST_CARD) { errEl.textContent = "In der Vorschau gehen nur die beiden Testkarten."; return; }
   errEl.textContent = "";
   const payButton = form.querySelector("#pay");
   payButton.disabled = true;
+  paymentInProgress = true;
   payButton.innerHTML = `<span class="spinner"></span> Zahlung läuft …`;
   setTimeout(() => {
-    if (paymentMethod === "Karte" && card === DECLINED_TEST_CARD) {
+    if (method === "Karte" && card === DECLINED_TEST_CARD) {
+      paymentInProgress = false;
       payButton.disabled = false;
       payButton.textContent = `${euro(offer.priceCents)} bezahlen`;
       errEl.textContent = "Die Karte wurde abgelehnt. Bitte eine andere Zahlungsart wählen.";
       return;
     }
     if (!isBookable(offerById(offer.id))) {
+      paymentInProgress = false;
       payButton.disabled = false;
       payButton.textContent = `${euro(offer.priceCents)} bezahlen`;
       errEl.textContent = "Dieses Angebot ist gerade nicht mehr buchbar.";
       return;
     }
     const order = { id: newId("b"), offerId: offer.id, buyer, email, grossCents: offer.priceCents, commissionPercent: state.commissionPercent, date: new Date().toISOString().slice(0, 10) };
+    paymentInProgress = false;
     state.orders.push(order);
     saveState();
     location.hash = `#/fertig/${order.id}`;
@@ -756,7 +772,7 @@ const ACTIONS = {
   "pay-setup": () => paySetupFee(),
   "export": () => exportCsv(),
   "view-as": id => { state.currentMemberId = id; saveState(); location.hash = "#/bereich/verkaeufe"; },
-  "approve": id => { memberById(id).status = "aktiv"; saveState(); render(); toast("Mitglied freigegeben"); },
+  "approve": id => { const m = memberById(id); if (!m?.setupPaid || !m.payouts) return; m.status = "aktiv"; saveState(); render(); toast("Mitglied freigegeben"); },
   "block": id => { memberById(id).status = "gesperrt"; saveState(); render(); toast("Mitglied gesperrt"); }
 };
 
@@ -764,7 +780,7 @@ document.getElementById("app").addEventListener("click", e => {
   const chip = e.target.closest("[data-category]");
   if (chip) { activeCategory = chip.dataset.category; render(); return; }
   const method = e.target.closest("[data-method]");
-  if (method) { paymentMethod = method.dataset.method; render(); return; }
+  if (method && !paymentInProgress) { paymentMethod = method.dataset.method; render(); return; }
   const action = e.target.closest("[data-action]");
   if (action && !action.disabled) ACTIONS[action.dataset.action]?.(action.dataset.id);
 });
