@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-fUyJ4jKHGKrMdY4zSePxbH1vP4VmcCm6b01Zi0uNnW4='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-NFEIAtiXI2ACj03YHfd4RREA1hdX1gqw6SSxpKA5+nY='; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <title>Family Travel Business – Bezahlvorschau</title>
 <style>
@@ -549,7 +549,7 @@ function adminMembers() {
       <td>${m.setupPaid ? `<span class="badge green">bezahlt</span>` : `<span class="badge amber">offen</span>`}</td>
       <td>${m.payouts ? `<span class="badge green">ja</span>` : `<span class="badge amber">nein</span>`}</td>
       <td>${statusBadge(m)}</td>
-      <td class="actions">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : m.setupPaid && m.payouts ? `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>` : `<span class="meta" style="color:var(--muted)">wartet auf Mitglied</span>`}</td>
+      <td style="text-align:right;white-space:nowrap">${m.status === "aktiv" ? `<button class="btn danger small" data-action="block" data-id="${m.id}">Sperren</button>` : m.setupPaid && m.payouts ? `<button class="btn small" data-action="approve" data-id="${m.id}">Freigeben</button>` : `<span class="meta" style="color:var(--muted)">wartet auf Mitglied</span>`}</td>
     </tr>`).join("")}
     </tbody></table></div>
     <p class="note" style="margin-top:16px">Gesperrte Mitglieder bleiben mit ihren Verkäufen erhalten, ihre Angebote sind aber nicht mehr buchbar.</p>`;
